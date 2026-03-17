@@ -7,12 +7,15 @@ pub const Token = struct {
         punctuation,
         identifier,
     },
-    value: []const u8,
-    /// Positions are tracked to allow compiler errors.
-    position: Position,
+    lexeme: Lexeme,
 };
-/// Position functions as both a lexeme,
-/// and as a part of the Token.
+/// A lexeme is a chunk of code before it has been assigned a type.
+/// They are not always syntactically correct.
+pub const Lexeme = struct {
+    position: Position,
+    value: []const u8,
+};
+/// The position of each token is kept for debugging and error messages
 pub const Position = struct {
     row: usize,
     col: usize,
@@ -25,11 +28,11 @@ const whitespace = " \n\r\t";
 const operators = "+-*/%<=>!~&|^";
 
 /// Generate a list of lexemes associated with a source file.
-/// Returns an owned slice of Position.
-pub fn lexemize(allocator: std.mem.Allocator, source: []const u8) ![]Position {
+/// Returns an owned slice of Lexeme.
+pub fn lexemize(allocator: std.mem.Allocator, source: []const u8) ![]Lexeme {
     // 50 was chosen arbitrarily.
     // I just thought it would be enough without being too wasteful.
-    var positions = try std.ArrayList(Position).initCapacity(allocator, 50);
+    var lexemes = try std.ArrayList(Lexeme).initCapacity(allocator, 50);
     var row: usize = 0;
     var col: usize = 0;
     // Index into source.
@@ -59,20 +62,26 @@ pub fn lexemize(allocator: std.mem.Allocator, source: []const u8) ![]Position {
                         end += std.mem.findAny(u8, source[i + end ..], whitespace ++ ",()[];" ++ operators).?;
                     }
                 }
-                try positions.append(allocator, .{
-                    .col = col,
-                    .row = row,
-                    .length = end,
+                try lexemes.append(allocator, .{
+                    .position = .{
+                        .col = col,
+                        .row = row,
+                        .length = end,
+                    },
+                    .value = source[i .. i + end],
                 });
                 col += end;
                 i += end - 1;
             },
             'a'...'z', 'A'...'Z', '_' => {
                 const end = std.mem.findAny(u8, source[i..], whitespace ++ ".,()[]{};" ++ operators).?;
-                try positions.append(allocator, .{
-                    .col = col,
-                    .row = row,
-                    .length = end,
+                try lexemes.append(allocator, .{
+                    .position = .{
+                        .col = col,
+                        .row = row,
+                        .length = end,
+                    },
+                    .value = source[i .. i + end],
                 });
                 col += end;
                 i += end - 1;
@@ -80,23 +89,30 @@ pub fn lexemize(allocator: std.mem.Allocator, source: []const u8) ![]Position {
             // This does NOT include division because of comments.
             '+', '-', '*', '%', '<', '=', '>', '!', '~', '&', '|', '^' => {
                 const end = std.mem.findAny(u8, source[i..], whitespace ++ std.ascii.letters ++ "_0123456789.,()[]{};").?;
-                try positions.append(allocator, .{
-                    .col = col,
-                    .row = row,
-                    .length = end,
+                try lexemes.append(allocator, .{
+                    .position = .{
+                        .col = col,
+                        .row = row,
+                        .length = end,
+                    },
+                    .value = source[i .. i + end],
                 });
                 col += end;
                 i += end - 1;
             },
             '(', ')', '[', ']', '{', '}', ',', '.', ';' => {
-                try positions.append(allocator, .{
-                    .col = col,
-                    .row = row,
-                    .length = 1,
+                try lexemes.append(allocator, .{
+                    .position = .{
+                        .col = col,
+                        .row = row,
+                        .length = 1,
+                    },
+                    .value = source[i .. i + 1],
                 });
                 col += 1;
             },
             '"', '\'' => |c| {
+                const start = i;
                 var len: usize = 0;
                 while (i < source.len) {
                     i += 1;
@@ -112,10 +128,13 @@ pub fn lexemize(allocator: std.mem.Allocator, source: []const u8) ![]Position {
                     }
                 }
 
-                try positions.append(allocator, .{
-                    .col = col,
-                    .row = row,
-                    .length = len,
+                try lexemes.append(allocator, .{
+                    .position = .{
+                        .col = col,
+                        .row = row,
+                        .length = len,
+                    },
+                    .value = source[start .. i + 1],
                 });
                 col += len;
             },
@@ -124,29 +143,38 @@ pub fn lexemize(allocator: std.mem.Allocator, source: []const u8) ![]Position {
                 // TODO: bounds check.
                 if (source[i + 1] == '/') {
                     const end = std.mem.findScalar(u8, source[i..], '\n').?;
-                    try positions.append(allocator, .{
-                        .col = col,
-                        .row = row,
-                        .length = end,
+                    try lexemes.append(allocator, .{
+                        .position = .{
+                            .col = col,
+                            .row = row,
+                            .length = end,
+                        },
+                        .value = source[i .. i + end],
                     });
                     col += end;
                     i += end - 1;
                 } else if (source[i + 1] == '*') {
                     const end = std.mem.find(u8, source[i..], "*/").?;
-                    try positions.append(allocator, .{
-                        .col = col,
-                        .row = row,
-                        .length = end + 2,
+                    try lexemes.append(allocator, .{
+                        .position = .{
+                            .col = col,
+                            .row = row,
+                            .length = end + 2,
+                        },
+                        .value = source[i .. i + end + 2],
                     });
                     // Row and col need to be properly set after a multiline comment.
                     row += std.mem.countScalar(u8, source[i .. i + end], '\n');
                     col = end - (std.mem.findScalarLast(u8, source[i .. i + end], '\n') orelse 0) + 1;
                     i += end + 1;
                 } else {
-                    try positions.append(allocator, .{
-                        .col = col,
-                        .row = row,
-                        .length = 1,
+                    try lexemes.append(allocator, .{
+                        .position = .{
+                            .col = col,
+                            .row = row,
+                            .length = 1,
+                        },
+                        .value = source[i .. i + 1],
                     });
                     col += 1;
                 }
@@ -157,7 +185,7 @@ pub fn lexemize(allocator: std.mem.Allocator, source: []const u8) ![]Position {
             },
         }
     }
-    return positions.toOwnedSlice(allocator);
+    return lexemes.toOwnedSlice(allocator);
 }
 
 pub fn posToSymbol(pos: Position, source: []const u8) []const u8 {
