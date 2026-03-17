@@ -2,10 +2,10 @@ const std = @import("std");
 const tokenizer = @import("tokenizer.zig");
 const code = @embedFile("test.c");
 pub fn main(init: std.process.Init) !void {
-    const lexemes = try tokenizer.lexemize(init.gpa, code);
-    defer init.gpa.free(lexemes);
+    const tokens = try tokenizer.lex(init.gpa, code);
+    defer init.gpa.free(tokens);
     std.debug.print("{s}\n", .{code});
-    for (lexemes) |l| {
-        std.debug.print("{any} | {any}\n", .{ l, tokenizer.posToSymbol(l.position, code) });
+    for (tokens) |t| {
+        std.debug.print("{any}:       \t{s}\n", .{ t.type, t.lexeme.value });
     }
 }

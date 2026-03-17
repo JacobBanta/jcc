@@ -1,14 +1,17 @@
 //! Handles the lexical anaylsis phase.
 const std = @import("std");
-pub const Token = struct {
-    type: enum {
-        keyword,
-        literal,
-        punctuation,
-        identifier,
-    },
-    lexeme: Lexeme,
-};
+
+/// Turns source into []Token.
+pub fn lex(allocator: std.mem.Allocator, source: []const u8) ![]Token {
+    const lexemes = try lexemize(allocator, source);
+    defer allocator.free(lexemes);
+    const tokens = try allocator.alloc(Token, lexemes.len);
+    for (0..tokens.len) |i| {
+        tokens[i] = tokenize(lexemes[i]) catch std.debug.panic("Failed to tokenize lexeme: `{s}`\n", .{lexemes[i].value});
+    }
+    return tokens;
+}
+
 /// A lexeme is a chunk of code before it has been assigned a type.
 /// They are not always syntactically correct.
 pub const Lexeme = struct {
@@ -29,7 +32,7 @@ const operators = "+-*/%<=>!~&|^";
 
 /// Generate a list of lexemes associated with a source file.
 /// Returns an owned slice of Lexeme.
-pub fn lexemize(allocator: std.mem.Allocator, source: []const u8) ![]Lexeme {
+fn lexemize(allocator: std.mem.Allocator, source: []const u8) ![]Lexeme {
     // 50 was chosen arbitrarily.
     // I just thought it would be enough without being too wasteful.
     var lexemes = try std.ArrayList(Lexeme).initCapacity(allocator, 50);
@@ -38,7 +41,7 @@ pub fn lexemize(allocator: std.mem.Allocator, source: []const u8) ![]Lexeme {
     // Index into source.
     var i: usize = 0;
     while (i < source.len) : (i += 1) {
-        switch (source[i]) {
+        sw: switch (source[i]) {
             // Newline makes a new row.
             // Other whitespace just adds to col.
             ' ', '\r', '\t' => {
@@ -168,15 +171,8 @@ pub fn lexemize(allocator: std.mem.Allocator, source: []const u8) ![]Lexeme {
                     col = end - (std.mem.findScalarLast(u8, source[i .. i + end], '\n') orelse 0) + 1;
                     i += end + 1;
                 } else {
-                    try lexemes.append(allocator, .{
-                        .position = .{
-                            .col = col,
-                            .row = row,
-                            .length = 1,
-                        },
-                        .value = source[i .. i + 1],
-                    });
-                    col += 1;
+                    // Treat division the same as multiplication.
+                    continue :sw '*';
                 }
             },
 
@@ -188,11 +184,100 @@ pub fn lexemize(allocator: std.mem.Allocator, source: []const u8) ![]Lexeme {
     return lexemes.toOwnedSlice(allocator);
 }
 
-pub fn posToSymbol(pos: Position, source: []const u8) []const u8 {
-    var i: usize = 0;
-    for (0..pos.row) |_| {
-        i = std.mem.findScalarPos(u8, source, i, '\n').? + 1;
+pub const keywords: []const []const u8 = &.{
+    "int",
+    "return",
+};
+
+/// Contains the type information of a lexeme.
+pub const Token = struct {
+    type: enum {
+        keyword,
+        numericLiteral,
+        stringLiteral,
+        charLiteral,
+        punctuation,
+        identifier,
+        operator,
+        comment,
+    },
+    lexeme: Lexeme,
+};
+
+/// Turns a lexeme into a token.
+/// Does some basic validation.
+fn tokenize(lexeme: Lexeme) !Token {
+    switch (lexeme.value[0]) {
+        '0'...'9' => {
+            try validateNumber(lexeme.value);
+            return .{ .lexeme = lexeme, .type = .numericLiteral };
+        },
+        'a'...'z', 'A'...'Z', '_' => {
+            for (keywords) |k| {
+                if (std.mem.eql(u8, lexeme.value, k)) {
+                    return .{ .lexeme = lexeme, .type = .keyword };
+                }
+            }
+            return .{ .lexeme = lexeme, .type = .identifier };
+        },
+        '+', '-', '*', '/', '%', '<', '=', '>', '!', '~', '&', '|', '^' => {
+            if (lexeme.value.len >= 2 and lexeme.value[0] == '/' and (lexeme.value[1] == '/' or lexeme.value[1] == '*')) {
+                return .{ .lexeme = lexeme, .type = .comment };
+            }
+            return .{ .lexeme = lexeme, .type = .operator };
+        },
+        '(', ')', '[', ']', '{', '}', ',', '.', ';' => {
+            return .{ .lexeme = lexeme, .type = .punctuation };
+        },
+        '"' => {
+            return .{ .lexeme = lexeme, .type = .stringLiteral };
+        },
+        '\'' => {
+            return .{ .lexeme = lexeme, .type = .charLiteral };
+        },
+        else => unreachable,
     }
-    i += pos.col;
-    return source[i .. i + pos.length];
 }
+
+fn validateNumber(number: []const u8) !void {
+    var base: enum { dec, hex, bin, oct } = .dec;
+    var i: usize = 0;
+    while (i < number.len) : (i += 1) {
+        const digit = number[i];
+        if (digit != '0') {
+            if (digit == 'o') {
+                base = .oct;
+            } else if (digit == 'x') {
+                base = .hex;
+            } else if (digit == 'b') {
+                base = .bin;
+            } else if (digit >= '1' and digit <= '9') {
+                // Could be octal. Not my problem.
+                base = .dec;
+            }
+        }
+    }
+    i += 1;
+    while (i < number.len) : (i += 1) {
+        // TODO: make thes checks handle edge cases
+        if (base == .bin) {
+            if (number[i] != '0' and number[i] != '1') {
+                return error.InvalidNumber;
+            }
+        } else if (base == .oct) {
+            if (number[i] < '0' or number[i] > '7') {
+                return error.InvalidNumber;
+            }
+        } else if (base == .dec) {
+            if (number[i] < '0' or number[i] > '9') {
+                return error.InvalidNumber;
+            }
+        } else if (base == .hex) {
+            if (number[i] < '0' or number[i] > '9' and number[i] < 'A' or number[i] > 'F') {
+                return error.InvalidNumber;
+            }
+        }
+    }
+}
+
+// TODO: add tests
