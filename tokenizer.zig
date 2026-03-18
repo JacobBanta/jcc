@@ -170,21 +170,46 @@ fn lexemize(allocator: std.mem.Allocator, source: []const u8) ![]Lexeme {
     return lexemes.toOwnedSlice(allocator);
 }
 
-pub const keywords: []const []const u8 = &.{
-    "int",
-    "return",
+pub const Keyword = enum {
+    int,
+    @"return",
+};
+pub const Punctuation = enum {
+    @"(",
+    @")",
+    @"[",
+    @"]",
+    @"{",
+    @"}",
+    @",",
+    @".",
+    @";",
+    pub fn fromChar(c: u8) Punctuation {
+        return switch (c) {
+            '(' => .@"(",
+            ')' => .@")",
+            '[' => .@"[",
+            ']' => .@"]",
+            '{' => .@"{",
+            '}' => .@"}",
+            ',' => .@",",
+            '.' => .@".",
+            ';' => .@";",
+            else => unreachable,
+        };
+    }
 };
 
 /// Contains the type information of a lexeme.
 pub const Token = struct {
-    type: enum {
-        keyword,
-        numericLiteral,
-        stringLiteral,
-        charLiteral,
-        punctuation,
-        identifier,
-        operator,
+    info: union(enum) {
+        keyword: Keyword,
+        numericLiteral: void,
+        stringLiteral: void,
+        charLiteral: void,
+        punctuation: Punctuation,
+        identifier: void,
+        operator: void,
     },
     lexeme: Lexeme,
 };
@@ -195,27 +220,27 @@ fn tokenize(lexeme: Lexeme) !Token {
     switch (lexeme.value[0]) {
         '0'...'9' => {
             try validateNumber(lexeme.value);
-            return .{ .lexeme = lexeme, .type = .numericLiteral };
+            return .{ .lexeme = lexeme, .info = .numericLiteral };
         },
         'a'...'z', 'A'...'Z', '_' => {
-            for (keywords) |k| {
-                if (std.mem.eql(u8, lexeme.value, k)) {
-                    return .{ .lexeme = lexeme, .type = .keyword };
+            inline for (std.meta.tags(Keyword)) |k| {
+                if (std.mem.eql(u8, lexeme.value, @tagName(k))) {
+                    return .{ .lexeme = lexeme, .info = .{ .keyword = k } };
                 }
             }
-            return .{ .lexeme = lexeme, .type = .identifier };
+            return .{ .lexeme = lexeme, .info = .identifier };
         },
         '+', '-', '*', '/', '%', '<', '=', '>', '!', '~', '&', '|', '^' => {
-            return .{ .lexeme = lexeme, .type = .operator };
+            return .{ .lexeme = lexeme, .info = .operator };
         },
-        '(', ')', '[', ']', '{', '}', ',', '.', ';' => {
-            return .{ .lexeme = lexeme, .type = .punctuation };
+        '(', ')', '[', ']', '{', '}', ',', '.', ';' => |p| {
+            return .{ .lexeme = lexeme, .info = .{ .punctuation = .fromChar(p) } };
         },
         '"' => {
-            return .{ .lexeme = lexeme, .type = .stringLiteral };
+            return .{ .lexeme = lexeme, .info = .stringLiteral };
         },
         '\'' => {
-            return .{ .lexeme = lexeme, .type = .charLiteral };
+            return .{ .lexeme = lexeme, .info = .charLiteral };
         },
         else => unreachable,
     }
