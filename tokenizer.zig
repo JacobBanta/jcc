@@ -146,26 +146,12 @@ fn lexemize(allocator: std.mem.Allocator, source: []const u8) ![]Lexeme {
                 // TODO: bounds check.
                 if (source[i + 1] == '/') {
                     const end = std.mem.findScalar(u8, source[i..], '\n').?;
-                    try lexemes.append(allocator, .{
-                        .position = .{
-                            .col = col,
-                            .row = row,
-                            .length = end,
-                        },
-                        .value = source[i .. i + end],
-                    });
+                    // Dont use the comment as a lexeme.
                     col += end;
                     i += end - 1;
                 } else if (source[i + 1] == '*') {
                     const end = std.mem.find(u8, source[i..], "*/").?;
-                    try lexemes.append(allocator, .{
-                        .position = .{
-                            .col = col,
-                            .row = row,
-                            .length = end + 2,
-                        },
-                        .value = source[i .. i + end + 2],
-                    });
+                    // Dont use the comment as a lexeme.
                     // Row and col need to be properly set after a multiline comment.
                     row += std.mem.countScalar(u8, source[i .. i + end], '\n');
                     col = end - (std.mem.findScalarLast(u8, source[i .. i + end], '\n') orelse 0) + 1;
@@ -199,7 +185,6 @@ pub const Token = struct {
         punctuation,
         identifier,
         operator,
-        comment,
     },
     lexeme: Lexeme,
 };
@@ -221,9 +206,6 @@ fn tokenize(lexeme: Lexeme) !Token {
             return .{ .lexeme = lexeme, .type = .identifier };
         },
         '+', '-', '*', '/', '%', '<', '=', '>', '!', '~', '&', '|', '^' => {
-            if (lexeme.value.len >= 2 and lexeme.value[0] == '/' and (lexeme.value[1] == '/' or lexeme.value[1] == '*')) {
-                return .{ .lexeme = lexeme, .type = .comment };
-            }
             return .{ .lexeme = lexeme, .type = .operator };
         },
         '(', ')', '[', ']', '{', '}', ',', '.', ';' => {
