@@ -212,6 +212,9 @@ pub const Token = struct {
         operator: void,
     },
     lexeme: Lexeme,
+    pub fn is(self: Token, token: []const u8) bool {
+        return std.mem.eql(u8, self.lexeme.value, token);
+    }
 };
 
 /// Turns a lexeme into a token.
