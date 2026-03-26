@@ -3,7 +3,7 @@ const std = @import("std");
 const Token = @import("tokenizer.zig").Token;
 const assert = std.debug.assert;
 
-const ASTNode = struct {
+pub const ASTNode = struct {
     tokens: []Token = &.{},
     nodeType: enum {
         declaration,
