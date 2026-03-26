@@ -7,12 +7,12 @@ pub fn main(init: std.process.Init) !void {
     const allocator = init.gpa;
     const tokens = try tokenizer.lex(allocator, code);
     defer init.gpa.free(tokens);
-    var ast = try parser.parse(allocator, tokens);
-    defer ast.deinit(allocator);
     std.debug.print("{s}\n", .{code});
     for (tokens) |t| {
         std.debug.print("{any}: {s}\n", .{ t.info, t.lexeme.value });
     }
+    var ast = try parser.parse(allocator, tokens);
+    defer ast.deinit(allocator);
     std.debug.print("{f}", .{ast});
     const @"asm" = try codegen.genCode(allocator, &.{ast});
     defer allocator.free(@"asm");

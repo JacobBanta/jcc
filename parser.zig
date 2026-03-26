@@ -118,7 +118,7 @@ fn parseScope(allocator: std.mem.Allocator, tokens: []Token) !ASTNode {
                 unreachable;
             };
 
-            try children.append(allocator, try parseScope(allocator, tokens[i..end]));
+            try children.append(allocator, try parseScope(allocator, tokens[i .. end + 1]));
             i = end;
         }
         if (tokens[i].info == .keyword) {
