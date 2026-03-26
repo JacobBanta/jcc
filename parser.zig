@@ -102,7 +102,7 @@ fn parseScope(allocator: std.mem.Allocator, tokens: []Token) !ASTNode {
     var node: ASTNode = .{ .nodeType = .scope, .tokens = tokens };
     var children = std.ArrayList(ASTNode).empty;
     var i: usize = 1;
-    while (i < tokens.len) : (i += 1) {
+    while (i < tokens.len - 1) : (i += 1) {
         if (tokens[i].is("{")) {
             const end = blk: {
                 var depth: usize = 0;
@@ -120,8 +120,7 @@ fn parseScope(allocator: std.mem.Allocator, tokens: []Token) !ASTNode {
 
             try children.append(allocator, try parseScope(allocator, tokens[i .. end + 1]));
             i = end;
-        }
-        if (tokens[i].info == .keyword) {
+        } else if (tokens[i].info == .keyword) {
             const semicolon = blk: {
                 for (tokens[i..], i..) |t, ind| {
                     if (t.is(";")) {
@@ -151,6 +150,29 @@ fn parseScope(allocator: std.mem.Allocator, tokens: []Token) !ASTNode {
                 },
                 //else => unreachable,
             }
+            i = semicolon;
+        } else if (tokens[i].info == .identifier) {
+            const semicolon = blk: {
+                for (tokens[i..], i..) |t, ind| {
+                    if (t.is(";")) {
+                        break :blk ind;
+                    }
+                }
+                unreachable;
+            };
+            if (tokens[i + 1].info != .operator) unreachable;
+            if (tokens[i + 1].is("=")) {
+                var a: ASTNode = .{ .tokens = tokens[i .. semicolon + 1], .nodeType = .binary_expression };
+                a.children = try allocator.alloc(ASTNode, 3);
+                a.children[0] = .{ .tokens = tokens[i .. i + 1], .nodeType = .variable };
+                a.children[1] = .{ .tokens = tokens[i + 1 .. i + 2], .nodeType = .operator };
+                a.children[2] = try parseExpression(allocator, tokens[i + 2 .. semicolon]);
+                try children.append(allocator, a);
+            } else unreachable;
+            i = semicolon;
+        } else {
+            std.debug.print("{any}\n", .{tokens[i]});
+            unreachable;
         }
     }
     node.children = try children.toOwnedSlice(allocator);

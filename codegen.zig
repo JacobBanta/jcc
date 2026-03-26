@@ -1,6 +1,6 @@
 const std = @import("std");
 const ASTNode = @import("parser.zig").ASTNode;
-const assert = std.debig.assert;
+const assert = std.debug.assert;
 pub const _start =
     \\global _start
     \\_start:
@@ -85,6 +85,20 @@ pub fn genCode(allocator: std.mem.Allocator, ast: []const ASTNode, ctx: ?*Contex
                             } else if (child.children.len == 1) {
                                 try ctx.?.declarations.append(allocator, child.children[0]);
                                 try code.appendSlice(allocator, "push 0\n");
+                            } else unreachable;
+                        },
+                        .binary_expression => {
+                            if (child.children[1].tokens[0].is("=")) {
+                                try code.appendSlice(allocator, "mov ");
+                                for (ctx.?.declarations.items, 0..) |decl, i| {
+                                    if (decl.tokens[0].is(child.children[0].tokens[0].lexeme.value)) {
+                                        try code.print(allocator, "[rbp - {d}], ", .{(i + 1) * 8});
+                                        break;
+                                    }
+                                } else return error.UnexpectedIdentifier;
+                                assert(child.children[2].tokens.len == 1);
+                                try code.appendSlice(allocator, child.children[2].tokens[0].lexeme.value);
+                                try code.appendSlice(allocator, "\n");
                             } else unreachable;
                         },
                         else => unreachable,
