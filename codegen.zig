@@ -97,19 +97,11 @@ pub fn genCode(allocator: std.mem.Allocator, ast: []const ASTNode, ctx: ?*Contex
                         const m = try move(
                             allocator,
                             .{ .variable = node.children[1].tokens[0].lexeme.value },
-                            .{ .register = .rax },
+                            .{ .variable = node.children[0].tokens[0].lexeme.value },
                             ctx.?,
                         );
                         defer allocator.free(m);
                         try code.appendSlice(allocator, m);
-                        const m2 = try move(
-                            allocator,
-                            .{ .register = .rax },
-                            .{ .variable = node.children[0].tokens[0].lexeme.value },
-                            ctx.?,
-                        );
-                        defer allocator.free(m2);
-                        try code.appendSlice(allocator, m2);
                     } else unreachable;
                 } else if (node.children.len == 1) {
                     try ctx.?.declarations.append(allocator, node.children[0]);
@@ -154,6 +146,13 @@ pub fn genCode(allocator: std.mem.Allocator, ast: []const ASTNode, ctx: ?*Contex
 
 fn move(allocator: std.mem.Allocator, from: Location, to: Location, ctx: *Context) ![]const u8 {
     var code = std.ArrayList(u8).empty;
+    if (from == .variable and to == .variable) {
+        const one = try move(allocator, from, .{ .register = .rax }, ctx);
+        defer allocator.free(one);
+        const two = try move(allocator, .{ .register = .rax }, to, ctx);
+        defer allocator.free(two);
+        return std.mem.join(allocator, "", &.{ one, two });
+    }
     try code.appendSlice(allocator, "mov ");
     if (to == .variable) {
         assert(from != .variable);
