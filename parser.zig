@@ -137,7 +137,19 @@ fn parseScope(allocator: std.mem.Allocator, tokens: []Token) !ASTNode {
                     a.children[0] = try parseExpression(allocator, tokens[i + 1 .. semicolon]);
                     try children.append(allocator, a);
                 },
-                else => unreachable,
+                .int => {
+                    var a: ASTNode = .{ .tokens = tokens[i .. semicolon + 1], .nodeType = .declaration };
+                    if (tokens[i .. semicolon + 1].len == 3) {
+                        a.children = try allocator.alloc(ASTNode, 1);
+                        a.children[0] = .{ .tokens = tokens[i + 1 .. i + 2], .nodeType = .variable };
+                    } else {
+                        a.children = try allocator.alloc(ASTNode, 2);
+                        a.children[0] = .{ .tokens = tokens[i + 1 .. i + 2], .nodeType = .variable };
+                        a.children[1] = try parseExpression(allocator, tokens[i + 3 .. semicolon]);
+                    }
+                    try children.append(allocator, a);
+                },
+                //else => unreachable,
             }
         }
     }
@@ -147,6 +159,9 @@ fn parseScope(allocator: std.mem.Allocator, tokens: []Token) !ASTNode {
 fn parseExpression(allocator: std.mem.Allocator, tokens: []Token) !ASTNode {
     _ = allocator;
     if (tokens.len == 1) {
+        if (tokens[0].info == .identifier) {
+            return .{ .tokens = tokens, .nodeType = .variable };
+        }
         return .{ .tokens = tokens, .nodeType = .literal };
     } else unreachable;
 }
