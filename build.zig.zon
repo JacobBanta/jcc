@@ -1,6 +1,6 @@
 .{
     .name = .jcc,
-    .version = "0.0.1",
+    .version = "0.0.2",
     .minimum_zig_version = "0.16.0-dev.2984+cb7d2b056",
     .paths = .{""},
     .fingerprint = 0x206a9f626c1751b7,
