@@ -2,9 +2,48 @@ const std = @import("std");
 const tokenizer = @import("tokenizer.zig");
 const parser = @import("parser.zig");
 const codegen = @import("codegen.zig");
-const code = @embedFile("test.c");
+const clap = @import("clap");
 pub fn main(init: std.process.Init) !void {
     const allocator = init.gpa;
+    const help_text =
+        \\-h, --help        Display this help and exit.
+        \\-o, --out <FILE>  Output destination.
+        \\-d, --debug       Enable debug outputs on stderr.
+        \\<FILE>            Input file
+        \\
+    ;
+    const params = comptime clap.parseParamsComptime(help_text);
+
+    const parsers = comptime .{
+        .FILE = clap.parsers.string,
+    };
+
+    var diag = clap.Diagnostic{};
+    var res = clap.parse(clap.Help, &params, parsers, init.minimal.args, .{
+        .diagnostic = &diag,
+        .allocator = allocator,
+        .assignment_separators = "=:",
+    }) catch |err| {
+        try diag.reportToFile(init.io, .stderr(), err);
+        return err;
+    };
+    defer res.deinit();
+
+    if (res.args.help != 0) {
+        std.debug.print(help_text, .{});
+        return;
+    }
+
+    if (res.positionals[0] == null) {
+        std.debug.print("No input file provided\n", .{});
+        return;
+    }
+    const cwd = std.Io.Dir.cwd();
+    const file = try cwd.openFile(init.io, res.positionals[0].?, .{ .mode = .read_only });
+    defer file.close(init.io);
+    var reader = file.readerStreaming(init.io, &.{});
+    const code = try reader.interface.readAlloc(allocator, (try file.stat(init.io)).size);
+    defer allocator.free(code);
     const tokens = try tokenizer.lex(allocator, code);
     defer allocator.free(tokens);
     //std.debug.print("{s}\n", .{code});
@@ -16,8 +55,10 @@ pub fn main(init: std.process.Init) !void {
     //std.debug.print("{f}", .{ast});
     const @"asm" = try codegen.genCode(allocator, &.{ast}, null);
     defer allocator.free(@"asm");
-    try std.Io.File.stdout().writeStreamingAll(init.io, codegen._start);
-    try std.Io.File.stdout().writeStreamingAll(init.io, @"asm");
+    const file_out = try cwd.createFile(init.io, res.args.out orelse "a.out.asm", .{});
+    defer file_out.close(init.io);
+    try file_out.writeStreamingAll(init.io, codegen._start);
+    try file_out.writeStreamingAll(init.io, @"asm");
 }
 
 /// test only function

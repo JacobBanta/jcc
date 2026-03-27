@@ -12,19 +12,21 @@ pub fn build(b: *std.Build) !void {
         .name = "jcc",
         .root_module = mod,
     });
+    const clap = b.dependency("clap", .{});
+    exe.root_module.addImport("clap", clap.module("clap"));
     b.installArtifact(exe);
     const cmd = b.addRunArtifact(exe);
-    cmd.has_side_effects = true;
-    cmd.stdio_limit = .unlimited;
-    const @"asm" = cmd.captureStdOut(.{ .basename = "a.asm" });
+    cmd.addArg("-o");
+    const asm_file = cmd.addOutputFileArg("a.asm");
+    cmd.addFileArg(b.path("test.c"));
     const nasm = b.addSystemCommand(&.{ "nasm", "-felf64", "-o" });
-    const obj = nasm.addOutputFileArg("a.o");
-    nasm.addFileArg(@"asm");
+    const obj_file = nasm.addOutputFileArg("a.o");
+    nasm.addFileArg(asm_file);
     const compile = b.step("compile", "Compile test.c");
     compile.dependOn(&nasm.step);
     const ld = b.addSystemCommand(&.{ "ld", "-o" });
     const out = ld.addOutputFileArg("a.out");
-    ld.addFileArg(obj);
+    ld.addFileArg(obj_file);
     const testc = b.addSystemCommand(&.{ "sh", "-c" });
     testc.addFileArg(out);
     const run = b.step("run", "Run test.c");
