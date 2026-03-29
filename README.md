@@ -2,7 +2,7 @@
 ### Jacob's C Compiler
 A C compiler that almost sort of works.
 ## Dependencies
-Zig 0.16.0-dev.3006+94355f192, NASM, and ld
+Zig 0.16.0-dev.3028+a85495ca2, NASM, and ld
 ## Usage
 Only compiles `test.c`
 
@@ -10,6 +10,7 @@ Only supports basic usage
 ```c
 int main() {
     int x = 1;
+    x = x * 2 + 3 - 4;
     x = 0;
     return x;
 }
