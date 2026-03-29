@@ -329,6 +329,10 @@ fn genExpression(allocator: std.mem.Allocator, exp: ASTNode, to: Location, ctx: 
                 "sub rax, rdx\n"
             else if (op.tokens[0].is("*"))
                 "imul rax, rdx\n"
+            else if (op.tokens[0].is("/"))
+                "mov rcx, rdx\ncqo\nidiv rcx\n"
+            else if (op.tokens[0].is("%"))
+                "mov rcx, rdx\ncqo\nidiv rcx\nmov rax, rdx\n"
             else
                 unreachable;
             try code.appendSlice(allocator, inst);

@@ -327,6 +327,7 @@ fn bindingPower(tokens: []Token, i: usize) BindingPower {
             '-' => .sub,
             '*' => .mul,
             '/' => .div,
+            '%' => .div,
             else => unreachable,
         };
     }
