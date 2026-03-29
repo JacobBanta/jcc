@@ -96,61 +96,125 @@ fn compileAndRun(source: []const u8) !u8 {
 }
 
 test "return" {
-    try std.testing.expectEqual(try compileAndRun("int main(){return 42;}"), 42);
+    try std.testing.expectEqual(42, try compileAndRun("int main(){return 42;}"));
 }
 
 test "declare variable" {
-    try std.testing.expectEqual(try compileAndRun("int main(){int x = 42; return x;}"), 42);
+    try std.testing.expectEqual(42, try compileAndRun("int main(){int x = 42; return x;}"));
 }
 
 test "assign variable" {
-    try std.testing.expectEqual(try compileAndRun("int main(){int x; x = 42; return x;}"), 42);
+    try std.testing.expectEqual(42, try compileAndRun("int main(){int x; x = 42; return x;}"));
 }
 
 test "reassign variable" {
-    try std.testing.expectEqual(try compileAndRun("int main(){int x = 1; x = 42; return x;}"), 42);
+    try std.testing.expectEqual(42, try compileAndRun("int main(){int x = 1; x = 42; return x;}"));
 }
 
 test "assign variable from variable" {
-    try std.testing.expectEqual(try compileAndRun("int main(){int x = 42; int y = x; return y;}"), 42);
+    try std.testing.expectEqual(42, try compileAndRun("int main(){int x = 42; int y = x; return y;}"));
 }
 
 test "add" {
-    try std.testing.expectEqual(try compileAndRun("int main(){int x = 40; x += 2; return x;}"), 42);
+    try std.testing.expectEqual(42, try compileAndRun("int main(){int x = 40; x += 2; return x;}"));
 }
 
 test "sub" {
-    try std.testing.expectEqual(try compileAndRun("int main(){int x = 50; x -= 8; return x;}"), 42);
+    try std.testing.expectEqual(42, try compileAndRun("int main(){int x = 50; x -= 8; return x;}"));
 }
 
 test "mul" {
-    try std.testing.expectEqual(try compileAndRun("int main(){int x = 7; x *= 6; return x;}"), 42);
-}
-
-test "add negative value" {
-    try std.testing.expectEqual(try compileAndRun("int main(){int x = 50; x += -8; return x;}"), 42);
+    try std.testing.expectEqual(42, try compileAndRun("int main(){int x = 7; x *= 6; return x;}"));
 }
 
 test "direct expression" {
-    try std.testing.expectEqual(try compileAndRun("int main(){int x = 40 + 2; return x;}"), 42);
+    try std.testing.expectEqual(42, try compileAndRun("int main(){int x = 40 + 2; return x;}"));
+}
+
+test "add negative" {
+    try std.testing.expectEqual(42, try compileAndRun("int main(){int x = 50; x += -8; return x;}"));
 }
 
 test "return expression" {
-    try std.testing.expectEqual(try compileAndRun("int main(){return 40 + 2;}"), 42);
+    try std.testing.expectEqual(42, try compileAndRun("int main(){return 40 + 2;}"));
+}
+
+test "return add negative" {
+    try std.testing.expectEqual(42, try compileAndRun("int main(){return 43 + -1;}"));
+}
+
+test "return long expression" {
+    try std.testing.expectEqual(42, try compileAndRun("int main(){return 40 + 1 + 1;}"));
 }
 
 test "sub expression" {
-    try std.testing.expectEqual(try compileAndRun("int main(){return 50 - 8;}"), 42);
+    try std.testing.expectEqual(42, try compileAndRun("int main(){return 50 - 8;}"));
 }
 
 test "mul expression" {
-    try std.testing.expectEqual(try compileAndRun("int main(){return 7 * 6;}"), 42);
+    try std.testing.expectEqual(42, try compileAndRun("int main(){return 7 * 6;}"));
 }
 
 test "arithmetic with variables" {
-    try std.testing.expectEqual(try compileAndRun("int main(){int x = 7; int y = 6; x *= y; return x;}"), 42);
+    try std.testing.expectEqual(42, try compileAndRun("int main(){int x = 7; int y = 6; x *= y; return x;}"));
 }
 
 test "return expression with variables" {
-    try std.testing.expectEqual(try compileAndRun("int main(){int x = 7; int y = 6; return x * y;}"), 42);
+    try std.testing.expectEqual(42, try compileAndRun("int main(){int x = 7; int y = 6; return x * y;}"));
+}
+
+test "operator precedence mul before add" {
+    try std.testing.expectEqual(20, try compileAndRun("int main(){return 2 + 3 * 6;}"));
+}
+
+test "operator precedence mul before sub" {
+    try std.testing.expectEqual(4, try compileAndRun("int main(){return 10 - 2 * 3;}"));
+}
+
+test "operator precedence multiple terms" {
+    try std.testing.expectEqual(26, try compileAndRun("int main(){return 2 * 3 + 4 * 5;}"));
+}
+
+test "parentheses override precedence" {
+    try std.testing.expectEqual(30, try compileAndRun("int main(){return (2 + 3) * 6;}"));
+}
+
+test "parentheses left side" {
+    try std.testing.expectEqual(14, try compileAndRun("int main(){return 2 * (3 + 4);}"));
+}
+
+test "nested parentheses" {
+    try std.testing.expectEqual(42, try compileAndRun("int main(){return (2 + (4 * 5)) * 2 - 2;}"));
+}
+
+test "complex expression with variables and precedence" {
+    try std.testing.expectEqual(42, try compileAndRun("int main(){int x = 4; int y = 5; return 2 + x * y + 20;}"));
+}
+
+test "parentheses with variables" {
+    try std.testing.expectEqual(42, try compileAndRun("int main(){int x = 4; int y = 8; return ((x + y) * (y - 2) - 30);}"));
+}
+
+test "division" {
+    try std.testing.expectEqual(42, try compileAndRun("int main(){return 84 / 2;}"));
+}
+
+test "integer division truncates" {
+    try std.testing.expectEqual(42, try compileAndRun("int main(){return 85 / 2;}"));
+}
+
+test "division in expression" {
+    try std.testing.expectEqual(42, try compileAndRun("int main(){return 10 + 64 / 2;}"));
+}
+
+test "modulo" {
+    try std.testing.expectEqual(42, try compileAndRun("int main(){return 128 % 86;}"));
+}
+
+test "modulo in expression" {
+    try std.testing.expectEqual(42, try compileAndRun("int main(){return 100 % 58 + 0 * 3;}"));
+}
+
+test "complex expression with all operators" {
+    try std.testing.expectEqual(42, try compileAndRun("int main(){return 4 + 8 * 6 - 20 / 2;}"));
 }

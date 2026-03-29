@@ -85,6 +85,13 @@ pub fn genCode(allocator: std.mem.Allocator, ast: []const ASTNode, ctx: ?*Contex
                             .{ .register = .rax },
                             ctx.?,
                         ));
+                    } else if (node.children[0].nodeType == .expression) {
+                        try append(allocator, &code, try genExpression(
+                            allocator,
+                            node.children[0],
+                            .{ .register = .rax },
+                            ctx.?,
+                        ));
                     } else unreachable;
                     try code.appendSlice(allocator, epilogue);
                 } else unreachable;
@@ -92,6 +99,7 @@ pub fn genCode(allocator: std.mem.Allocator, ast: []const ASTNode, ctx: ?*Contex
             .declaration => {
                 if (node.children.len == 2) {
                     try ctx.?.declarations.append(allocator, node.children[0]);
+                    try code.appendSlice(allocator, "sub rsp, 8\n");
                     if (node.children[1].nodeType == .literal) {
                         try append(allocator, &code, try move(
                             allocator,
@@ -103,6 +111,13 @@ pub fn genCode(allocator: std.mem.Allocator, ast: []const ASTNode, ctx: ?*Contex
                         try append(allocator, &code, try move(
                             allocator,
                             .{ .variable = node.children[1].tokens[0].lexeme.value },
+                            .{ .variable = node.children[0].tokens[0].lexeme.value },
+                            ctx.?,
+                        ));
+                    } else if (node.children[1].nodeType == .expression) {
+                        try append(allocator, &code, try genExpression(
+                            allocator,
+                            node.children[1],
                             .{ .variable = node.children[0].tokens[0].lexeme.value },
                             ctx.?,
                         ));
@@ -180,6 +195,31 @@ pub fn genCode(allocator: std.mem.Allocator, ast: []const ASTNode, ctx: ?*Contex
                             .{ .variable = node.children[0].tokens[0].lexeme.value },
                             ctx.?,
                         ));
+                    } else if (node.children[2].nodeType == .expression) {
+                        try append(allocator, &code, try genExpression(
+                            allocator,
+                            node.children[2],
+                            .{ .register = .rdx },
+                            ctx.?,
+                        ));
+                        try append(allocator, &code, try move(
+                            allocator,
+                            .{ .variable = node.children[0].tokens[0].lexeme.value },
+                            .{ .register = .rax },
+                            ctx.?,
+                        ));
+                        if (node.children[1].tokens[0].is("+="))
+                            try code.appendSlice(allocator, "add rax, rdx\n");
+                        if (node.children[1].tokens[0].is("-="))
+                            try code.appendSlice(allocator, "sub rax, rdx\n");
+                        if (node.children[1].tokens[0].is("*="))
+                            try code.appendSlice(allocator, "mul rax, rdx\n");
+                        try append(allocator, &code, try move(
+                            allocator,
+                            .{ .register = .rax },
+                            .{ .variable = node.children[0].tokens[0].lexeme.value },
+                            ctx.?,
+                        ));
                     } else unreachable;
                 } else unreachable;
             },
@@ -195,6 +235,7 @@ fn append(allocator: std.mem.Allocator, arraylist: *std.ArrayList(u8), items: []
 }
 
 fn move(allocator: std.mem.Allocator, from: Location, to: Location, ctx: *Context) ![]const u8 {
+    if (std.meta.eql(from, to)) return "";
     var code = std.ArrayList(u8).empty;
     if (from == .variable and to == .variable) {
         const one = try move(allocator, from, .{ .register = .rax }, ctx);
@@ -241,5 +282,110 @@ fn move(allocator: std.mem.Allocator, from: Location, to: Location, ctx: *Contex
             try code.print(allocator, "{s}, {s}\n", .{ @tagName(to.register), from.literal });
         } else unreachable;
     }
+    return code.toOwnedSlice(allocator);
+}
+fn getOffset(ctx: *Context, name: []const u8) !usize {
+    for (ctx.declarations.items, 0..) |decl, i| {
+        if (decl.tokens[0].is(name)) {
+            return i * 8;
+        }
+    }
+    return error.UnexpectedIdentifier;
+}
+fn genExpression(allocator: std.mem.Allocator, exp: ASTNode, to: Location, ctx: *Context) ![]const u8 {
+    var code = std.ArrayList(u8).empty;
+    defer code.deinit(allocator);
+    switch (exp.nodeType) {
+        .expression => {
+            return genExpression(allocator, exp.children[0], to, ctx);
+        },
+        .literal => {
+            try append(allocator, &code, try move(
+                allocator,
+                .{ .literal = exp.tokens[0].lexeme.value },
+                .{ .register = .rax },
+                ctx,
+            ));
+        },
+        .variable => {
+            try append(allocator, &code, try move(
+                allocator,
+                .{ .variable = exp.tokens[0].lexeme.value },
+                .{ .register = .rax },
+                ctx,
+            ));
+        },
+        .binary_expression => {
+            const lhs = exp.children[0];
+            const op = exp.children[1];
+            const rhs = exp.children[2];
+            try append(allocator, &code, try genExpression(allocator, lhs, .{ .register = .rax }, ctx));
+            try code.appendSlice(allocator, "push rax\n");
+            try append(allocator, &code, try genExpression(allocator, rhs, .{ .register = .rdx }, ctx));
+            try code.appendSlice(allocator, "pop rax\n");
+            const inst: []const u8 = if (op.tokens[0].is("+"))
+                "add rax, rdx\n"
+            else if (op.tokens[0].is("-"))
+                "sub rax, rdx\n"
+            else if (op.tokens[0].is("*"))
+                "imul rax, rdx\n"
+            else
+                unreachable;
+            try code.appendSlice(allocator, inst);
+        },
+        .unary_expression => {
+            const is_prefix = exp.children[0].nodeType == .operator;
+            if (is_prefix) {
+                const op = exp.children[0];
+                const operand = exp.children[1];
+                try append(allocator, &code, try genExpression(allocator, operand, .{ .register = .rax }, ctx));
+                if (op.tokens[0].is("-")) {
+                    try code.appendSlice(allocator, "neg rax\n");
+                } else if (op.tokens[0].is("++")) {
+                    try code.appendSlice(allocator, "inc rax\n");
+                    try append(allocator, &code, try move(
+                        allocator,
+                        .{ .register = .rax },
+                        .{ .variable = operand.tokens[0].lexeme.value },
+                        ctx,
+                    ));
+                } else if (op.tokens[0].is("--")) {
+                    try code.appendSlice(allocator, "dec rax\n");
+                    try append(allocator, &code, try move(
+                        allocator,
+                        .{ .register = .rax },
+                        .{ .variable = operand.tokens[0].lexeme.value },
+                        ctx,
+                    ));
+                } else unreachable;
+            } else {
+                const operand = exp.children[0];
+                const op = exp.children[1];
+                try append(allocator, &code, try genExpression(allocator, operand, .{ .register = .rax }, ctx));
+                std.log.debug("{s}", .{op.tokens[0].lexeme.value});
+                if (op.tokens[0].is("++")) {
+                    try code.print(
+                        allocator,
+                        "inc qword [rbp - {d}]\n",
+                        .{try getOffset(ctx, operand.tokens[0].lexeme.value)},
+                    );
+                } else if (op.tokens[0].is("--")) {
+                    try code.print(
+                        allocator,
+                        "dec qword [rbp - {d}]\n",
+                        .{try getOffset(ctx, operand.tokens[0].lexeme.value)},
+                    );
+                } else unreachable;
+            }
+        },
+        else => unreachable,
+    }
+
+    try append(allocator, &code, try move(
+        allocator,
+        .{ .register = .rax },
+        to,
+        ctx,
+    ));
     return code.toOwnedSlice(allocator);
 }
