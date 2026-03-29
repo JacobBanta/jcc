@@ -99,7 +99,6 @@ pub fn genCode(allocator: std.mem.Allocator, ast: []const ASTNode, ctx: ?*Contex
             .declaration => {
                 if (node.children.len == 2) {
                     try ctx.?.declarations.append(allocator, node.children[0]);
-                    try code.appendSlice(allocator, "sub rsp, 8\n");
                     if (node.children[1].nodeType == .literal) {
                         try append(allocator, &code, try move(
                             allocator,
@@ -292,6 +291,7 @@ fn getOffset(ctx: *Context, name: []const u8) !usize {
     }
     return error.UnexpectedIdentifier;
 }
+var uniqueID: std.atomic.Value(usize) = .init(0);
 fn genExpression(allocator: std.mem.Allocator, exp: ASTNode, to: Location, ctx: *Context) ![]const u8 {
     var code = std.ArrayList(u8).empty;
     defer code.deinit(allocator);
@@ -316,13 +316,30 @@ fn genExpression(allocator: std.mem.Allocator, exp: ASTNode, to: Location, ctx: 
             ));
         },
         .binary_expression => {
+            const declarationsLength = ctx.declarations.items.len;
+            defer ctx.declarations.shrinkRetainingCapacity(declarationsLength);
             const lhs = exp.children[0];
             const op = exp.children[1];
             const rhs = exp.children[2];
+            const name = try std.fmt.allocPrint(allocator, "__internal_expression_var_{d}__", .{uniqueID.fetchAdd(1, .acq_rel)});
+            defer allocator.free(name);
+            try ctx.declarations.append(allocator, .{ .nodeType = .variable, .tokens = &.{.{ .lexeme = .{ .value = name, .position = undefined }, .info = .identifier }} });
             try append(allocator, &code, try genExpression(allocator, lhs, .{ .register = .rax }, ctx));
-            try code.appendSlice(allocator, "push rax\n");
+            try append(allocator, &code, try move(
+                allocator,
+                .{ .register = .rax },
+                .{ .variable = name },
+                ctx,
+            ));
+            // try code.appendSlice(allocator, "push rax\n");
             try append(allocator, &code, try genExpression(allocator, rhs, .{ .register = .rdx }, ctx));
-            try code.appendSlice(allocator, "pop rax\n");
+            try append(allocator, &code, try move(
+                allocator,
+                .{ .variable = name },
+                .{ .register = .rax },
+                ctx,
+            ));
+            // try code.appendSlice(allocator, "pop rax\n");
             const inst: []const u8 = if (op.tokens[0].is("+"))
                 "add rax, rdx\n"
             else if (op.tokens[0].is("-"))
