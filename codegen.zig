@@ -136,6 +136,56 @@ pub fn genCode(allocator: std.mem.Allocator, ast: []const ASTNode, ctx: ?*Contex
                             }
                         } else return error.UnexpectedIdentifier;
                     } else unreachable;
+                } else if (node.children[1].tokens[0].is("+=")) {
+                    if (node.children[2].nodeType == .literal) {
+                        const m = try move(
+                            allocator,
+                            .{ .variable = node.children[0].tokens[0].lexeme.value },
+                            .{ .register = .rax },
+                            ctx.?,
+                        );
+                        defer allocator.free(m);
+                        try code.appendSlice(allocator, m);
+                        assert(node.children[2].tokens.len == 1);
+                        try code.appendSlice(allocator, "add rax, ");
+                        try code.appendSlice(allocator, node.children[2].tokens[0].lexeme.value);
+                        try code.appendSlice(allocator, "\n");
+                        const m2 = try move(
+                            allocator,
+                            .{ .register = .rax },
+                            .{ .variable = node.children[0].tokens[0].lexeme.value },
+                            ctx.?,
+                        );
+                        defer allocator.free(m2);
+                        try code.appendSlice(allocator, m2);
+                    } else if (node.children[2].nodeType == .variable) {
+                        const m = try move(
+                            allocator,
+                            .{ .variable = node.children[0].tokens[0].lexeme.value },
+                            .{ .register = .rax },
+                            ctx.?,
+                        );
+                        defer allocator.free(m);
+                        try code.appendSlice(allocator, m);
+                        assert(node.children[2].tokens.len == 1);
+                        const m2 = try move(
+                            allocator,
+                            .{ .variable = node.children[2].tokens[0].lexeme.value },
+                            .{ .register = .rdx },
+                            ctx.?,
+                        );
+                        defer allocator.free(m2);
+                        try code.appendSlice(allocator, m2);
+                        try code.appendSlice(allocator, "add rax, rdx");
+                        const m3 = try move(
+                            allocator,
+                            .{ .register = .rax },
+                            .{ .variable = node.children[0].tokens[0].lexeme.value },
+                            ctx.?,
+                        );
+                        defer allocator.free(m3);
+                        try code.appendSlice(allocator, m3);
+                    } else unreachable;
                 } else unreachable;
             },
             else => unreachable,

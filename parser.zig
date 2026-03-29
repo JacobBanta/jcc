@@ -161,7 +161,12 @@ fn parseScope(allocator: std.mem.Allocator, tokens: []Token) !ASTNode {
                 unreachable;
             };
             if (tokens[i + 1].info != .operator) unreachable;
-            if (tokens[i + 1].is("=")) {
+            if (tokens[i + 1].is("=") or
+                tokens[i + 1].is("+=") or
+                tokens[i + 1].is("-=") or
+                tokens[i + 1].is("*=") or
+                tokens[i + 1].is("/="))
+            {
                 var a: ASTNode = .{ .tokens = tokens[i .. semicolon + 1], .nodeType = .binary_expression };
                 a.children = try allocator.alloc(ASTNode, 3);
                 a.children[0] = .{ .tokens = tokens[i .. i + 1], .nodeType = .variable };
