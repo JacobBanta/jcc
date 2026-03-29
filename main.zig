@@ -111,6 +111,10 @@ test "reassign variable" {
     try std.testing.expectEqual(try compileAndRun("int main(){int x = 1; x = 42; return x;}"), 42);
 }
 
+test "assign variable from variable" {
+    try std.testing.expectEqual(try compileAndRun("int main(){int x = 42; int y = x; return y;}"), 42);
+}
+
 test "add" {
     try std.testing.expectEqual(try compileAndRun("int main(){int x = 40; x += 2; return x;}"), 42);
 }
@@ -121,6 +125,10 @@ test "sub" {
 
 test "mul" {
     try std.testing.expectEqual(try compileAndRun("int main(){int x = 7; x *= 6; return x;}"), 42);
+}
+
+test "add negative value" {
+    try std.testing.expectEqual(try compileAndRun("int main(){int x = 50; x += -8; return x;}"), 42);
 }
 
 test "direct expression" {

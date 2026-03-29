@@ -128,7 +128,10 @@ pub fn genCode(allocator: std.mem.Allocator, ast: []const ASTNode, ctx: ?*Contex
                             ctx.?,
                         ));
                     } else unreachable;
-                } else if (node.children[1].tokens[0].is("+=")) {
+                } else if (node.children[1].tokens[0].is("+=") or
+                    node.children[1].tokens[0].is("-=") or
+                    node.children[1].tokens[0].is("*="))
+                {
                     if (node.children[2].nodeType == .literal) {
                         try append(allocator, &code, try move(
                             allocator,
@@ -137,7 +140,12 @@ pub fn genCode(allocator: std.mem.Allocator, ast: []const ASTNode, ctx: ?*Contex
                             ctx.?,
                         ));
                         assert(node.children[2].tokens.len == 1);
-                        try code.appendSlice(allocator, "add rax, ");
+                        if (node.children[1].tokens[0].is("+="))
+                            try code.appendSlice(allocator, "add rax, ");
+                        if (node.children[1].tokens[0].is("-="))
+                            try code.appendSlice(allocator, "sub rax, ");
+                        if (node.children[1].tokens[0].is("*="))
+                            try code.appendSlice(allocator, "imul rax, ");
                         try code.appendSlice(allocator, node.children[2].tokens[0].lexeme.value);
                         try code.appendSlice(allocator, "\n");
                         try append(allocator, &code, try move(
@@ -160,7 +168,12 @@ pub fn genCode(allocator: std.mem.Allocator, ast: []const ASTNode, ctx: ?*Contex
                             .{ .register = .rdx },
                             ctx.?,
                         ));
-                        try code.appendSlice(allocator, "add rax, rdx");
+                        if (node.children[1].tokens[0].is("+="))
+                            try code.appendSlice(allocator, "add rax, rdx\n");
+                        if (node.children[1].tokens[0].is("-="))
+                            try code.appendSlice(allocator, "sub rax, rdx\n");
+                        if (node.children[1].tokens[0].is("*="))
+                            try code.appendSlice(allocator, "mul rax, rdx\n");
                         try append(allocator, &code, try move(
                             allocator,
                             .{ .register = .rax },
