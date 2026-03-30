@@ -243,7 +243,7 @@ var uniqueID: std.atomic.Value(usize) = .init(0);
 fn genExpression(allocator: std.mem.Allocator, exp: ASTNode, to: Location, ctx: *Context) ![]const u8 {
     var code = std.ArrayList(u8).empty;
     defer code.deinit(allocator);
-    switch (exp.nodeType) {
+    sw: switch (exp.nodeType) {
         .expression => {
             return genExpression(allocator, exp.children[0], to, ctx);
         },
@@ -273,12 +273,55 @@ fn genExpression(allocator: std.mem.Allocator, exp: ASTNode, to: Location, ctx: 
             defer allocator.free(name);
             try ctx.declarations.append(allocator, .{ .nodeType = .variable, .tokens = &.{.{ .lexeme = .{ .value = name, .position = undefined }, .info = .identifier }} });
             try append(allocator, &code, try genExpression(allocator, lhs, .{ .register = .rax }, ctx));
+            if (op.tokens[0].is("&&")) {
+                const early_label = try std.fmt.allocPrint(allocator, "__internal_label_{d}__", .{uniqueID.fetchAdd(1, .acq_rel)});
+                defer allocator.free(early_label);
+                const late_label = try std.fmt.allocPrint(allocator, "__internal_label_{d}__", .{uniqueID.fetchAdd(1, .acq_rel)});
+                defer allocator.free(late_label);
+                try code.print(allocator, "cmp rax, 0\nje {s}\n", .{early_label});
+                try append(allocator, &code, try genExpression(allocator, rhs, .{ .register = .rax }, ctx));
+                try code.print(allocator,
+                    \\cmp rax, 0
+                    \\je {0s}
+                    \\mov rax, 1
+                    \\jmp {1s}
+                    \\{0s}:
+                    \\mov rax, 0
+                    \\{1s}:
+                    \\movzx rax, al
+                    \\
+                , .{ early_label, late_label });
+                break :sw;
+            } else if (op.tokens[0].is("||")) {
+                const early_label = try std.fmt.allocPrint(allocator, "__internal_label_{d}__", .{uniqueID.fetchAdd(1, .acq_rel)});
+                defer allocator.free(early_label);
+                const fail_label = try std.fmt.allocPrint(allocator, "__internal_label_{d}__", .{uniqueID.fetchAdd(1, .acq_rel)});
+                defer allocator.free(fail_label);
+                const late_label = try std.fmt.allocPrint(allocator, "__internal_label_{d}__", .{uniqueID.fetchAdd(1, .acq_rel)});
+                defer allocator.free(late_label);
+                try code.print(allocator, "cmp rax, 0\njne {s}\n", .{early_label});
+                try append(allocator, &code, try genExpression(allocator, rhs, .{ .register = .rax }, ctx));
+                try code.print(allocator,
+                    \\cmp rax, 0
+                    \\je {1s}
+                    \\{0s}:
+                    \\mov rax, 1
+                    \\jmp {2s}
+                    \\{1s}:
+                    \\mov rax, 0
+                    \\{2s}:
+                    \\movzx rax, al
+                    \\
+                , .{ early_label, fail_label, late_label });
+                break :sw;
+            }
             try append(allocator, &code, try move(
                 allocator,
                 .{ .register = .rax },
                 .{ .variable = name },
                 ctx,
             ));
+
             try append(allocator, &code, try genExpression(allocator, rhs, .{ .register = .rdx }, ctx));
             try append(allocator, &code, try move(
                 allocator,
@@ -308,10 +351,6 @@ fn genExpression(allocator: std.mem.Allocator, exp: ASTNode, to: Location, ctx: 
                 "cmp rax, rdx\nsetg al\nmovzx rax, al\n"
             else if (op.tokens[0].is("<"))
                 "cmp rax, rdx\nsetl al\nmovzx rax, al\n"
-            else if (op.tokens[0].is("&&"))
-                "imul rax, rdx\n"
-            else if (op.tokens[0].is("||"))
-                "add rax, rdx\n"
             else
                 unreachable;
             try code.appendSlice(allocator, inst);
