@@ -384,6 +384,16 @@ fn genExpression(allocator: std.mem.Allocator, exp: ASTNode, to: Location, ctx: 
                 "mov rcx, rdx\ncqo\nidiv rcx\nmov rax, rdx\n"
             else if (op.tokens[0].is("=="))
                 "cmp rax, rdx\nsete al\nmovzx rax, al\n"
+            else if (op.tokens[0].is("!="))
+                "cmp rax, rdx\nsetne al\nmovzx rax, al\n"
+            else if (op.tokens[0].is(">="))
+                "cmp rax, rdx\nsetge al\nmovzx rax, al\n"
+            else if (op.tokens[0].is("<="))
+                "cmp rax, rdx\nsetle al\nmovzx rax, al\n"
+            else if (op.tokens[0].is(">"))
+                "cmp rax, rdx\nsetg al\nmovzx rax, al\n"
+            else if (op.tokens[0].is("<"))
+                "cmp rax, rdx\nsetl al\nmovzx rax, al\n"
             else
                 unreachable;
             try code.appendSlice(allocator, inst);

@@ -282,3 +282,25 @@ test "if eq" {
         ,
     ));
 }
+
+test "if ne" {
+    try std.testing.expectEqual(42, try compileAndRun(
+        \\ int main() {
+        \\   if(0 != 1) {
+        \\     return 42;
+        \\   }
+        \\ }
+        ,
+    ));
+}
+
+test "if gt" {
+    try std.testing.expectEqual(42, try compileAndRun(
+        \\ int main() {
+        \\   if(2 > 1) {
+        \\     return 42;
+        \\   }
+        \\ }
+        ,
+    ));
+}
