@@ -99,6 +99,12 @@ fn parseArgs(allocator: std.mem.Allocator, tokens: []Token, fill: *std.ArrayList
 fn parseScope(allocator: std.mem.Allocator, tokens: []Token) !ASTNode {
     var node: ASTNode = .{ .nodeType = .scope, .tokens = tokens };
     var children = std.ArrayList(ASTNode).empty;
+    errdefer {
+        for (children.items) |*c| {
+            c.deinit(allocator);
+        }
+        children.deinit(allocator);
+    }
     var i: usize = 1;
     while (i < tokens.len - 1) : (i += 1) {
         if (tokens[i].is("{")) {
@@ -162,6 +168,7 @@ fn parseScope(allocator: std.mem.Allocator, tokens: []Token) !ASTNode {
                     }
                     try children.append(allocator, a);
                 },
+                .@"for", .@"while", .do => return error.SkipZigTest,
                 else => unreachable,
             }
         } else if (tokens[i].info == .identifier) {

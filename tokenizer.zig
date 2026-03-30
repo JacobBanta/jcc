@@ -175,6 +175,9 @@ pub const Keyword = enum {
     @"return",
     @"if",
     @"else",
+    @"for",
+    @"while",
+    do,
 };
 pub const Punctuation = enum {
     @"(",
