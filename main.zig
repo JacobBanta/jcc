@@ -99,6 +99,10 @@ test "return" {
     try std.testing.expectEqual(42, try compileAndRun("int main(){return 42;}"));
 }
 
+test "implicit return from main" {
+    try std.testing.expectEqual(0, try compileAndRun("int main(){}"));
+}
+
 test "declare variable" {
     try std.testing.expectEqual(42, try compileAndRun("int main(){int x = 42; return x;}"));
 }
@@ -163,24 +167,28 @@ test "return expression with variables" {
     try std.testing.expectEqual(42, try compileAndRun("int main(){int x = 7; int y = 6; return x * y;}"));
 }
 
+test "complex subtraction" {
+    try std.testing.expectEqual(42, try compileAndRun("int main(){return 44 - 1 - 1;}"));
+}
+
 test "operator precedence mul before add" {
-    try std.testing.expectEqual(20, try compileAndRun("int main(){return 2 + 3 * 6;}"));
+    try std.testing.expectEqual(42, try compileAndRun("int main(){return 2 + 5 * 8;}"));
 }
 
 test "operator precedence mul before sub" {
-    try std.testing.expectEqual(4, try compileAndRun("int main(){return 10 - 2 * 3;}"));
+    try std.testing.expectEqual(42, try compileAndRun("int main(){return 50 - 2 * 4;}"));
 }
 
 test "operator precedence multiple terms" {
-    try std.testing.expectEqual(26, try compileAndRun("int main(){return 2 * 3 + 4 * 5;}"));
+    try std.testing.expectEqual(42, try compileAndRun("int main(){return 2 * 11 + 4 * 5;}"));
 }
 
 test "parentheses override precedence" {
-    try std.testing.expectEqual(30, try compileAndRun("int main(){return (2 + 3) * 6;}"));
+    try std.testing.expectEqual(42, try compileAndRun("int main(){return (4 + 3) * 6;}"));
 }
 
 test "parentheses left side" {
-    try std.testing.expectEqual(14, try compileAndRun("int main(){return 2 * (3 + 4);}"));
+    try std.testing.expectEqual(42, try compileAndRun("int main(){return 6 * (3 + 4);}"));
 }
 
 test "nested parentheses" {
@@ -217,4 +225,60 @@ test "modulo in expression" {
 
 test "complex expression with all operators" {
     try std.testing.expectEqual(42, try compileAndRun("int main(){return 4 + 8 * 6 - 20 / 2;}"));
+}
+
+test "basic if" {
+    try std.testing.expectEqual(42, try compileAndRun(
+        \\ int main() {
+        \\   if(1) {
+        \\     return 42;
+        \\   }
+        \\   return 1;
+        \\ }
+        ,
+    ));
+}
+
+test "if one line" {
+    try std.testing.expectEqual(42, try compileAndRun(
+        \\ int main() {
+        \\   if(1) return 42;
+        \\ }
+        ,
+    ));
+}
+
+test "basic else" {
+    try std.testing.expectEqual(42, try compileAndRun(
+        \\ int main() {
+        \\   if(0) {
+        \\     return 1;
+        \\   } else {
+        \\     return 42;
+        \\   }
+        \\ }
+        ,
+    ));
+}
+
+test "if expr" {
+    try std.testing.expectEqual(42, try compileAndRun(
+        \\ int main() {
+        \\   if(0 + 1 * 0 + 7) {
+        \\     return 42;
+        \\   }
+        \\ }
+        ,
+    ));
+}
+
+test "if eq" {
+    try std.testing.expectEqual(42, try compileAndRun(
+        \\ int main() {
+        \\   if(0 == 0) {
+        \\     return 42;
+        \\   }
+        \\ }
+        ,
+    ));
 }

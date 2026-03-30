@@ -173,6 +173,8 @@ fn lexemize(allocator: std.mem.Allocator, source: []const u8) ![]Lexeme {
 pub const Keyword = enum {
     int,
     @"return",
+    @"if",
+    @"else",
 };
 pub const Punctuation = enum {
     @"(",

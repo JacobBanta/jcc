@@ -97,8 +97,6 @@ fn parseArgs(allocator: std.mem.Allocator, tokens: []Token, fill: *std.ArrayList
     unreachable;
 }
 fn parseScope(allocator: std.mem.Allocator, tokens: []Token) !ASTNode {
-    assert(tokens[0].is("{"));
-    assert(tokens[tokens.len - 1].is("}"));
     var node: ASTNode = .{ .nodeType = .scope, .tokens = tokens };
     var children = std.ArrayList(ASTNode).empty;
     var i: usize = 1;
@@ -135,6 +133,7 @@ fn parseScope(allocator: std.mem.Allocator, tokens: []Token) !ASTNode {
                     a.children = try allocator.alloc(ASTNode, 1);
                     a.children[0] = try parseExpression(allocator, tokens[i + 1 .. semicolon]);
                     try children.append(allocator, a);
+                    i = semicolon;
                 },
                 .int => {
                     var a: ASTNode = .{ .tokens = tokens[i .. semicolon + 1], .nodeType = .declaration };
@@ -147,10 +146,38 @@ fn parseScope(allocator: std.mem.Allocator, tokens: []Token) !ASTNode {
                         a.children[1] = try parseExpression(allocator, tokens[i + 3 .. semicolon]);
                     }
                     try children.append(allocator, a);
+                    i = semicolon;
                 },
-                //else => unreachable,
+                .@"if" => {
+                    var a: ASTNode = .{ .tokens = tokens[i .. semicolon + 1], .nodeType = .statement };
+                    a.children = try allocator.alloc(ASTNode, 2);
+                    a.children[0] = try parseExpression(allocator, tokens[i + 1 .. i + 2 + findClosingParen(tokens[i + 1 ..])]);
+                    const scopeStart = findClosingParen(tokens[i + 1 ..]) + i + 2;
+                    if (tokens[scopeStart].is("{")) {
+                        const scopeEnd = blk: {
+                            var depth: usize = 0;
+                            for (tokens[scopeStart..], scopeStart..) |t, ind| {
+                                if (t.is("{")) {
+                                    depth += 1;
+                                } else if (t.is("}")) {
+                                    if (depth == 1) {
+                                        break :blk ind;
+                                    } else depth -= 1;
+                                }
+                            }
+                            unreachable;
+                        };
+                        a.children[1] = try parseScope(allocator, tokens[scopeStart .. scopeEnd + 1]);
+                        try children.append(allocator, a);
+                        i = scopeEnd;
+                    } else {
+                        a.children[1] = try parseScope(allocator, tokens[scopeStart - 1 .. semicolon + 1]);
+                        try children.append(allocator, a);
+                        i = semicolon;
+                    }
+                },
+                else => unreachable,
             }
-            i = semicolon;
         } else if (tokens[i].info == .identifier) {
             const semicolon = blk: {
                 for (tokens[i..], i..) |t, ind| {
@@ -299,11 +326,13 @@ const BindingPower = enum {
     div,
     paren,
     unary,
+    eq,
     fn toValue(self: BindingPower) usize {
         return switch (self) {
             .none => 0,
-            .add, .sub => 10,
-            .mul, .div => 20,
+            .eq => 1,
+            .add, .sub => 2,
+            .mul, .div => 3,
             .unary => std.math.maxInt(u16) - 1,
             .paren => std.math.maxInt(u16),
         };
@@ -328,6 +357,7 @@ fn bindingPower(tokens: []Token, i: usize) BindingPower {
             '*' => .mul,
             '/' => .div,
             '%' => .div,
+            '=' => .eq,
             else => unreachable,
         };
     }

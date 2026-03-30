@@ -22,6 +22,7 @@ pub const epilogue =
     \\ret
     \\
 ;
+pub const main_epilogue = "mov rax, 0\n" ++ epilogue;
 
 const Context = struct {
     declarations: std.ArrayList(ASTNode) = .empty,
@@ -44,17 +45,20 @@ pub fn genCode(allocator: std.mem.Allocator, ast: []const ASTNode, ctx: ?*Contex
     for (ast) |node| {
         switch (node.nodeType) {
             .function => {
-                if (ast[0].children.len == 1) {
+                if (node.children.len == 1) {
                     try code.appendSlice(allocator, "global ");
-                    try code.appendSlice(allocator, ast[0].tokens[1].lexeme.value);
+                    try code.appendSlice(allocator, node.tokens[1].lexeme.value);
                     try code.appendSlice(allocator, "\n");
-                    try code.appendSlice(allocator, ast[0].tokens[1].lexeme.value);
+                    try code.appendSlice(allocator, node.tokens[1].lexeme.value);
                     try code.appendSlice(allocator, ":\n" ++ prologue);
                     try append(
                         allocator,
                         &code,
                         try genCode(allocator, ast[0].children, ctx),
                     );
+                    if (node.tokens[1].is("main")) {
+                        try code.appendSlice(allocator, main_epilogue);
+                    }
                 } else unreachable;
             },
             .scope => {
@@ -94,6 +98,34 @@ pub fn genCode(allocator: std.mem.Allocator, ast: []const ASTNode, ctx: ?*Contex
                         ));
                     } else unreachable;
                     try code.appendSlice(allocator, epilogue);
+                } else if (node.tokens[0].is("if")) {
+                    try append(allocator, &code, try genExpression(
+                        allocator,
+                        node.children[0],
+                        .{ .register = .rax },
+                        ctx.?,
+                    ));
+                    const else_label = try std.fmt.allocPrint(allocator, "__internal_label_{d}__", .{uniqueID.fetchAdd(1, .acq_rel)});
+                    defer allocator.free(else_label);
+                    const end_if = try std.fmt.allocPrint(allocator, "__internal_label_{d}__", .{uniqueID.fetchAdd(1, .acq_rel)});
+                    defer allocator.free(end_if);
+
+                    const inner = try genCode(allocator, &.{node.children[1]}, ctx);
+                    defer allocator.free(inner);
+                    const else_code = if (node.children.len == 3) try genCode(allocator, &.{node.children[2]}, ctx) else "";
+                    defer if (node.children.len == 3) allocator.free(else_code);
+                    try code.print(
+                        allocator,
+                        \\cmp rax, 0
+                        \\je {0s}
+                        \\{2s}
+                        \\jmp {1s}
+                        \\{0s}:
+                        \\{3s}
+                        \\{1s}:
+                    ,
+                        .{ else_label, end_if, inner, else_code },
+                    );
                 } else unreachable;
             },
             .declaration => {
@@ -350,6 +382,8 @@ fn genExpression(allocator: std.mem.Allocator, exp: ASTNode, to: Location, ctx: 
                 "mov rcx, rdx\ncqo\nidiv rcx\n"
             else if (op.tokens[0].is("%"))
                 "mov rcx, rdx\ncqo\nidiv rcx\nmov rax, rdx\n"
+            else if (op.tokens[0].is("=="))
+                "cmp rax, rdx\nsete al\nmovzx rax, al\n"
             else
                 unreachable;
             try code.appendSlice(allocator, inst);
