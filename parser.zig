@@ -345,14 +345,19 @@ const BindingPower = enum {
     paren,
     unary,
     eq,
+    logand,
+    logor,
     fn toValue(self: BindingPower) usize {
         return switch (self) {
+            .paren => 16,
+            // technically, postfix should go before prefix but whatever
+            .unary => 15,
+            .mul, .div => 13,
+            .add, .sub => 12,
+            .eq => 9,
+            .logand => 5,
+            .logor => 4,
             .none => 0,
-            .eq => 1,
-            .add, .sub => 2,
-            .mul, .div => 3,
-            .unary => std.math.maxInt(u16) - 1,
-            .paren => std.math.maxInt(u16),
         };
     }
 };
@@ -369,16 +374,29 @@ fn bindingPower(tokens: []Token, i: usize) BindingPower {
     }
     if (tokens[i].info == .operator) {
         assert(tokens[i].lexeme.value.len == 1);
-        return switch (tokens[i].lexeme.value[0]) {
-            '+' => .add,
-            '-' => .sub,
-            '*' => .mul,
-            '/' => .div,
-            '%' => .div,
-            '=' => .eq,
-            else => unreachable,
-        };
+        return if (tokens[i].is("+"))
+            .add
+        else if (tokens[i].is("-"))
+            .sub
+        else if (tokens[i].is("*"))
+            .mul
+        else if (tokens[i].is("/"))
+            .div
+        else if (tokens[i].is("%"))
+            .div
+        else if (tokens[i].is("=="))
+            .eq
+        else if (tokens[i].is("++"))
+            .unary
+        else if (tokens[i].is("--"))
+            .unary
+        else if (tokens[i].is("&&"))
+            .unary
+        else if (tokens[i].is("||"))
+            .unary
+        else
+            unreachable;
     }
-    assert(tokens[i + 1].info == .operator);
+    assert(tokens[i + 1].info != .operator);
     return bindingPower(tokens, i + 1);
 }

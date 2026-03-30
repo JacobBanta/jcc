@@ -279,7 +279,6 @@ fn genExpression(allocator: std.mem.Allocator, exp: ASTNode, to: Location, ctx: 
                 .{ .variable = name },
                 ctx,
             ));
-            // try code.appendSlice(allocator, "push rax\n");
             try append(allocator, &code, try genExpression(allocator, rhs, .{ .register = .rdx }, ctx));
             try append(allocator, &code, try move(
                 allocator,
@@ -287,7 +286,6 @@ fn genExpression(allocator: std.mem.Allocator, exp: ASTNode, to: Location, ctx: 
                 .{ .register = .rax },
                 ctx,
             ));
-            // try code.appendSlice(allocator, "pop rax\n");
             const inst: []const u8 = if (op.tokens[0].is("+"))
                 "add rax, rdx\n"
             else if (op.tokens[0].is("-"))
@@ -310,6 +308,10 @@ fn genExpression(allocator: std.mem.Allocator, exp: ASTNode, to: Location, ctx: 
                 "cmp rax, rdx\nsetg al\nmovzx rax, al\n"
             else if (op.tokens[0].is("<"))
                 "cmp rax, rdx\nsetl al\nmovzx rax, al\n"
+            else if (op.tokens[0].is("&&"))
+                "imul rax, rdx\n"
+            else if (op.tokens[0].is("||"))
+                "add rax, rdx\n"
             else
                 unreachable;
             try code.appendSlice(allocator, inst);
