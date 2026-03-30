@@ -4,7 +4,9 @@ A C compiler that almost sort of works.
 ## Dependencies
 Zig 0.16.0-dev.3028+a85495ca2, NASM, and ld
 ## Usage
-Only compiles `test.c`
+```bash
+jcc -o output.asm input.c
+```
 
 Only supports basic usage
 ```c
@@ -17,15 +19,15 @@ int main() {
 ```
 ### Automatic
 ```bash
-zig build run              # builds and runs test.c
+zig build run   # builds and runs test.c
 ```
 ### Manual
 ``` bash
-zig build                  # builds the compiler
-./zig-out/bin/jcc > a.asm  # builds test.c
+zig build
+./zig-out/bin/jcc -o a.asm test.c
 nasm -felf64 -o a.o a.asm
 ld -o a.out a.o
-./a.out                    # runs test.c
+./a.out
 ```
 
 
