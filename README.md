@@ -2,9 +2,10 @@
 ### Jacob's C Compiler
 A C compiler that almost sort of works.
 ## Dependencies
-Zig 0.16.0-dev.3028+a85495ca2, NASM, and ld
+Zig 0.16.0-dev.3039+b490412cd, NASM, and ld
 ## Usage
 ```bash
+jcc --help
 jcc -o output.asm input.c
 ```
 
@@ -13,8 +14,11 @@ Only supports basic usage
 int main() {
     int x = 1;
     x = x * 2 + 3 - 4;
-    x = 0;
-    return x;
+    if(x > 1) {
+        return 0;
+    } else {
+        return 1;
+    }
 }
 ```
 ### Automatic
