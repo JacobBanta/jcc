@@ -75,28 +75,12 @@ pub fn genCode(allocator: std.mem.Allocator, ast: []const ASTNode, ctx: ?*Contex
             },
             .statement => {
                 if (node.tokens[0].is("return")) {
-                    if (node.children[0].nodeType == .literal) {
-                        try append(allocator, &code, try move(
-                            allocator,
-                            .{ .literal = node.children[0].tokens[0].lexeme.value },
-                            .{ .register = .rax },
-                            ctx.?,
-                        ));
-                    } else if (node.children[0].nodeType == .variable) {
-                        try append(allocator, &code, try move(
-                            allocator,
-                            .{ .variable = node.children[0].tokens[0].lexeme.value },
-                            .{ .register = .rax },
-                            ctx.?,
-                        ));
-                    } else if (node.children[0].nodeType == .expression) {
-                        try append(allocator, &code, try genExpression(
-                            allocator,
-                            node.children[0],
-                            .{ .register = .rax },
-                            ctx.?,
-                        ));
-                    } else unreachable;
+                    try append(allocator, &code, try genExpression(
+                        allocator,
+                        node.children[0],
+                        .{ .register = .rax },
+                        ctx.?,
+                    ));
                     try code.appendSlice(allocator, epilogue);
                 } else if (node.tokens[0].is("if")) {
                     try append(allocator, &code, try genExpression(
@@ -131,127 +115,59 @@ pub fn genCode(allocator: std.mem.Allocator, ast: []const ASTNode, ctx: ?*Contex
             .declaration => {
                 if (node.children.len == 2) {
                     try ctx.?.declarations.append(allocator, node.children[0]);
-                    if (node.children[1].nodeType == .literal) {
-                        try append(allocator, &code, try move(
-                            allocator,
-                            .{ .literal = node.children[1].tokens[0].lexeme.value },
-                            .{ .variable = node.children[0].tokens[0].lexeme.value },
-                            ctx.?,
-                        ));
-                    } else if (node.children[1].nodeType == .variable) {
-                        try append(allocator, &code, try move(
-                            allocator,
-                            .{ .variable = node.children[1].tokens[0].lexeme.value },
-                            .{ .variable = node.children[0].tokens[0].lexeme.value },
-                            ctx.?,
-                        ));
-                    } else if (node.children[1].nodeType == .expression) {
-                        try append(allocator, &code, try genExpression(
-                            allocator,
-                            node.children[1],
-                            .{ .variable = node.children[0].tokens[0].lexeme.value },
-                            ctx.?,
-                        ));
-                    } else unreachable;
+                    try append(allocator, &code, try genExpression(
+                        allocator,
+                        node.children[1],
+                        .{ .variable = node.children[0].tokens[0].lexeme.value },
+                        ctx.?,
+                    ));
                 } else if (node.children.len == 1) {
                     try ctx.?.declarations.append(allocator, node.children[0]);
                 } else unreachable;
             },
             .binary_expression => {
                 if (node.children[1].tokens[0].is("=")) {
-                    if (node.children[2].nodeType == .literal) {
-                        try append(allocator, &code, try move(
-                            allocator,
-                            .{ .literal = node.children[2].tokens[0].lexeme.value },
-                            .{ .variable = node.children[0].tokens[0].lexeme.value },
-                            ctx.?,
-                        ));
-                    } else if (node.children[2].nodeType == .variable) {
-                        try append(allocator, &code, try move(
-                            allocator,
-                            .{ .variable = node.children[2].tokens[0].lexeme.value },
-                            .{ .variable = node.children[0].tokens[0].lexeme.value },
-                            ctx.?,
-                        ));
-                    } else unreachable;
+                    try append(allocator, &code, try genExpression(
+                        allocator,
+                        node.children[2],
+                        .{ .variable = node.children[0].tokens[0].lexeme.value },
+                        ctx.?,
+                    ));
                 } else if (node.children[1].tokens[0].is("+=") or
                     node.children[1].tokens[0].is("-=") or
-                    node.children[1].tokens[0].is("*="))
+                    node.children[1].tokens[0].is("*=") or
+                    node.children[1].tokens[0].is("/=") or
+                    node.children[1].tokens[0].is("%="))
                 {
-                    if (node.children[2].nodeType == .literal) {
-                        try append(allocator, &code, try move(
-                            allocator,
-                            .{ .variable = node.children[0].tokens[0].lexeme.value },
-                            .{ .register = .rax },
-                            ctx.?,
-                        ));
-                        assert(node.children[2].tokens.len == 1);
-                        if (node.children[1].tokens[0].is("+="))
-                            try code.appendSlice(allocator, "add rax, ");
-                        if (node.children[1].tokens[0].is("-="))
-                            try code.appendSlice(allocator, "sub rax, ");
-                        if (node.children[1].tokens[0].is("*="))
-                            try code.appendSlice(allocator, "imul rax, ");
-                        try code.appendSlice(allocator, node.children[2].tokens[0].lexeme.value);
-                        try code.appendSlice(allocator, "\n");
-                        try append(allocator, &code, try move(
-                            allocator,
-                            .{ .register = .rax },
-                            .{ .variable = node.children[0].tokens[0].lexeme.value },
-                            ctx.?,
-                        ));
-                    } else if (node.children[2].nodeType == .variable) {
-                        try append(allocator, &code, try move(
-                            allocator,
-                            .{ .variable = node.children[0].tokens[0].lexeme.value },
-                            .{ .register = .rax },
-                            ctx.?,
-                        ));
-                        assert(node.children[2].tokens.len == 1);
-                        try append(allocator, &code, try move(
-                            allocator,
-                            .{ .variable = node.children[2].tokens[0].lexeme.value },
-                            .{ .register = .rdx },
-                            ctx.?,
-                        ));
-                        if (node.children[1].tokens[0].is("+="))
-                            try code.appendSlice(allocator, "add rax, rdx\n");
-                        if (node.children[1].tokens[0].is("-="))
-                            try code.appendSlice(allocator, "sub rax, rdx\n");
-                        if (node.children[1].tokens[0].is("*="))
-                            try code.appendSlice(allocator, "mul rax, rdx\n");
-                        try append(allocator, &code, try move(
-                            allocator,
-                            .{ .register = .rax },
-                            .{ .variable = node.children[0].tokens[0].lexeme.value },
-                            ctx.?,
-                        ));
-                    } else if (node.children[2].nodeType == .expression) {
-                        try append(allocator, &code, try genExpression(
-                            allocator,
-                            node.children[2],
-                            .{ .register = .rdx },
-                            ctx.?,
-                        ));
-                        try append(allocator, &code, try move(
-                            allocator,
-                            .{ .variable = node.children[0].tokens[0].lexeme.value },
-                            .{ .register = .rax },
-                            ctx.?,
-                        ));
-                        if (node.children[1].tokens[0].is("+="))
-                            try code.appendSlice(allocator, "add rax, rdx\n");
-                        if (node.children[1].tokens[0].is("-="))
-                            try code.appendSlice(allocator, "sub rax, rdx\n");
-                        if (node.children[1].tokens[0].is("*="))
-                            try code.appendSlice(allocator, "mul rax, rdx\n");
-                        try append(allocator, &code, try move(
-                            allocator,
-                            .{ .register = .rax },
-                            .{ .variable = node.children[0].tokens[0].lexeme.value },
-                            ctx.?,
-                        ));
+                    try append(allocator, &code, try genExpression(
+                        allocator,
+                        node.children[2],
+                        .{ .register = .rdx },
+                        ctx.?,
+                    ));
+                    try append(allocator, &code, try move(
+                        allocator,
+                        .{ .variable = node.children[0].tokens[0].lexeme.value },
+                        .{ .register = .rax },
+                        ctx.?,
+                    ));
+                    if (node.children[1].tokens[0].is("+=")) {
+                        try code.appendSlice(allocator, "add rax, rdx\n");
+                    } else if (node.children[1].tokens[0].is("-=")) {
+                        try code.appendSlice(allocator, "sub rax, rdx\n");
+                    } else if (node.children[1].tokens[0].is("*=")) {
+                        try code.appendSlice(allocator, "imul rax, rdx\n");
+                    } else if (node.children[1].tokens[0].is("/=")) {
+                        try code.appendSlice(allocator, "mov rcx, rdx\ncqo\nidiv rcx\n");
+                    } else if (node.children[1].tokens[0].is("%=")) {
+                        try code.appendSlice(allocator, "mov rcx, rdx\ncqo\nidiv rcx\nmov rax, rdx\n");
                     } else unreachable;
+                    try append(allocator, &code, try move(
+                        allocator,
+                        .{ .register = .rax },
+                        .{ .variable = node.children[0].tokens[0].lexeme.value },
+                        ctx.?,
+                    ));
                 } else unreachable;
             },
             else => unreachable,
