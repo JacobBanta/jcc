@@ -102,31 +102,12 @@ fn parseScope(allocator: std.mem.Allocator, tokens: []Token) !ASTNode {
     var i: usize = 1;
     while (i < tokens.len - 1) : (i += 1) {
         if (tokens[i].is("{")) {
-            const end = blk: {
-                var depth: usize = 0;
-                for (tokens[i..], i..) |t, ind| {
-                    if (t.is("{")) {
-                        depth += 1;
-                    } else if (t.is("}")) {
-                        if (depth == 1) {
-                            break :blk ind;
-                        } else depth -= 1;
-                    }
-                }
-                unreachable;
-            };
+            const end = findClosingBrace(tokens, i);
 
             try children.append(allocator, try parseScope(allocator, tokens[i .. end + 1]));
             i = end;
         } else if (tokens[i].info == .keyword) {
-            const semicolon = blk: {
-                for (tokens[i..], i..) |t, ind| {
-                    if (t.is(";")) {
-                        break :blk ind;
-                    }
-                }
-                unreachable;
-            };
+            const semicolon = findSemicolon(tokens, i);
             switch (tokens[i].info.keyword) {
                 .@"return" => {
                     var a: ASTNode = .{ .tokens = tokens[i .. semicolon + 1], .nodeType = .statement };
@@ -151,42 +132,40 @@ fn parseScope(allocator: std.mem.Allocator, tokens: []Token) !ASTNode {
                 .@"if" => {
                     var a: ASTNode = .{ .tokens = tokens[i .. semicolon + 1], .nodeType = .statement };
                     a.children = try allocator.alloc(ASTNode, 2);
-                    a.children[0] = try parseExpression(allocator, tokens[i + 1 .. i + 2 + findClosingParen(tokens[i + 1 ..])]);
-                    const scopeStart = findClosingParen(tokens[i + 1 ..]) + i + 2;
+                    a.children[0] = try parseExpression(allocator, tokens[i + 1 .. i + 2 + findClosingParen(tokens[i + 1 ..], 0)]);
+                    const scopeStart = findClosingParen(tokens, i + 1) + 1;
                     if (tokens[scopeStart].is("{")) {
-                        const scopeEnd = blk: {
-                            var depth: usize = 0;
-                            for (tokens[scopeStart..], scopeStart..) |t, ind| {
-                                if (t.is("{")) {
-                                    depth += 1;
-                                } else if (t.is("}")) {
-                                    if (depth == 1) {
-                                        break :blk ind;
-                                    } else depth -= 1;
-                                }
-                            }
-                            unreachable;
-                        };
+                        const scopeEnd = findClosingBrace(tokens, scopeStart);
                         a.children[1] = try parseScope(allocator, tokens[scopeStart .. scopeEnd + 1]);
-                        try children.append(allocator, a);
                         i = scopeEnd;
                     } else {
                         a.children[1] = try parseScope(allocator, tokens[scopeStart - 1 .. semicolon + 1]);
-                        try children.append(allocator, a);
                         i = semicolon;
                     }
+                    var j = i + 1;
+                    if (tokens[j].is("else")) {
+                        a.children = try allocator.realloc(a.children, 3);
+                        while (j < tokens.len) : (j += 1) {
+                            if (tokens[j].is("else")) {
+                                if (tokens[j + 1].is("if")) {
+                                    j = findClosingParen(tokens, j + 2);
+                                }
+                                if (tokens[j + 1].is("{")) {
+                                    j = findClosingBrace(tokens, j + 1);
+                                } else {
+                                    j = findSemicolon(tokens, j);
+                                }
+                            } else break;
+                        }
+                        a.children[2] = try parseScope(allocator, tokens[i + 1 .. j]);
+                        i = j;
+                    }
+                    try children.append(allocator, a);
                 },
                 else => unreachable,
             }
         } else if (tokens[i].info == .identifier) {
-            const semicolon = blk: {
-                for (tokens[i..], i..) |t, ind| {
-                    if (t.is(";")) {
-                        break :blk ind;
-                    }
-                }
-                unreachable;
-            };
+            const semicolon = findSemicolon(tokens, i);
             if (tokens[i + 1].info != .operator) unreachable;
             if (tokens[i + 1].is("=") or
                 tokens[i + 1].is("+=") or
@@ -218,7 +197,7 @@ fn parseExpression(allocator: std.mem.Allocator, tokens: []Token) !ASTNode {
         return .{ .tokens = tokens, .nodeType = .literal };
     }
     if (tokens[0].is("(")) {
-        if (findClosingParen(tokens) == tokens.len - 1) return parseExpression(allocator, tokens[1 .. tokens.len - 1]);
+        if (findClosingParen(tokens, 0) == tokens.len - 1) return parseExpression(allocator, tokens[1 .. tokens.len - 1]);
     }
     if (tokens.len == 3) {
         assert(tokens[0].info != .operator);
@@ -230,7 +209,7 @@ fn parseExpression(allocator: std.mem.Allocator, tokens: []Token) !ASTNode {
         var minIndex: usize = std.math.maxInt(usize);
         var i: usize = 0;
         while (i < tokens.len) : (i += 1) {
-            if (tokens[i].is("(")) i += findClosingParen(tokens[i..]);
+            if (tokens[i].is("(")) i = findClosingParen(tokens, i);
             if (tokens[i].info == .operator and min >= bindingPower(tokens, i).toValue()) {
                 min = bindingPower(tokens, i).toValue();
                 minIndex = i;
@@ -246,14 +225,46 @@ fn parseExpression(allocator: std.mem.Allocator, tokens: []Token) !ASTNode {
         return binExpr(allocator, tokens[0..i], tokens[i], tokens[i + 1 ..]);
     }
 }
-fn findClosingParen(tokens: []Token) usize {
-    assert(tokens[0].is("("));
+fn findClosingParen(tokens: []Token, i: usize) usize {
+    assert(tokens[i].is("("));
     var depth: usize = 0;
-    for (tokens[0..], 0..) |t, i| {
+    for (tokens[i..], i..) |t, idx| {
         if (t.is("(")) depth += 1;
         if (t.is(")")) {
-            if (depth == 1) return i;
+            if (depth == 1) return idx;
             depth -= 1;
+        }
+    }
+    unreachable;
+}
+fn findClosingBrace(tokens: []Token, i: usize) usize {
+    assert(tokens[i].is("{"));
+    var depth: usize = 0;
+    for (tokens[i..], i..) |t, idx| {
+        if (t.is("{")) depth += 1;
+        if (t.is("}")) {
+            if (depth == 1) return idx;
+            depth -= 1;
+        }
+    }
+    unreachable;
+}
+fn findClosingSqBrace(tokens: []Token, i: usize) usize {
+    assert(tokens[i].is("["));
+    var depth: usize = 0;
+    for (tokens[i..], i..) |t, idx| {
+        if (t.is("[")) depth += 1;
+        if (t.is("]")) {
+            if (depth == 1) return idx;
+            depth -= 1;
+        }
+    }
+    unreachable;
+}
+fn findSemicolon(tokens: []Token, i: usize) usize {
+    for (tokens[i..], i..) |t, idx| {
+        if (t.is(";")) {
+            return idx;
         }
     }
     unreachable;
