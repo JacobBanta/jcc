@@ -170,6 +170,14 @@ pub fn genCode(allocator: std.mem.Allocator, ast: []const ASTNode, ctx: ?*Contex
                     ));
                 } else unreachable;
             },
+            .expression => {
+                try append(allocator, &code, try genExpression(
+                    allocator,
+                    node,
+                    .{ .register = .rax },
+                    ctx.?,
+                ));
+            },
             else => unreachable,
         }
     }
@@ -195,32 +203,25 @@ fn move(allocator: std.mem.Allocator, from: Location, to: Location, ctx: *Contex
     if (to == .variable) {
         assert(from != .variable);
         if (from == .register) {
-            for (ctx.declarations.items, 0..) |decl, i| {
-                if (decl.tokens[0].is(to.variable)) {
-                    try code.print(
-                        allocator,
-                        "[rbp - {d}], {s}\n",
-                        .{ (i + 1) * 8, @tagName(from.register) },
-                    );
-                    break;
-                }
-            } else return error.UnexpectedIdentifier;
+            try code.print(
+                allocator,
+                "[rbp - {d}], {s}\n",
+                .{ try getOffset(ctx, to.variable), @tagName(from.register) },
+            );
         } else if (from == .literal) {
-            for (ctx.declarations.items, 0..) |decl, i| {
-                if (decl.tokens[0].is(to.variable)) {
-                    try code.print(allocator, "[rbp - {d}], {s}\n", .{ (i + 1) * 8, from.literal });
-                    break;
-                }
-            } else return error.UnexpectedIdentifier;
+            try code.print(
+                allocator,
+                "[rbp - {d}], {s}\n",
+                .{ try getOffset(ctx, to.variable), from.literal },
+            );
         } else unreachable;
     } else if (from == .variable) {
         assert(to == .register);
-        for (ctx.declarations.items, 0..) |decl, i| {
-            if (decl.tokens[0].is(from.variable)) {
-                try code.print(allocator, "{s}, [rbp - {d}]\n", .{ @tagName(to.register), (i + 1) * 8 });
-                break;
-            }
-        } else return error.UnexpectedIdentifier;
+        try code.print(
+            allocator,
+            "{s}, [rbp - {d}]\n",
+            .{ @tagName(to.register), try getOffset(ctx, from.variable) },
+        );
     } else {
         assert(to == .register);
         if (from == .register) {
@@ -232,12 +233,15 @@ fn move(allocator: std.mem.Allocator, from: Location, to: Location, ctx: *Contex
     return code.toOwnedSlice(allocator);
 }
 fn getOffset(ctx: *Context, name: []const u8) !usize {
+    var loc: usize = 0;
     for (ctx.declarations.items, 0..) |decl, i| {
         if (decl.tokens[0].is(name)) {
-            return i * 8;
+            loc = (i + 1) * 8;
         }
     }
-    return error.UnexpectedIdentifier;
+    if (loc == 0)
+        return error.UnexpectedIdentifier;
+    return loc;
 }
 var uniqueID: std.atomic.Value(usize) = .init(0);
 fn genExpression(allocator: std.mem.Allocator, exp: ASTNode, to: Location, ctx: *Context) ![]const u8 {
@@ -380,11 +384,10 @@ fn genExpression(allocator: std.mem.Allocator, exp: ASTNode, to: Location, ctx: 
                         ctx,
                     ));
                 } else unreachable;
-            } else {
+            } else if (!is_prefix) {
                 const operand = exp.children[0];
                 const op = exp.children[1];
                 try append(allocator, &code, try genExpression(allocator, operand, .{ .register = .rax }, ctx));
-                std.log.debug("{s}", .{op.tokens[0].lexeme.value});
                 if (op.tokens[0].is("++")) {
                     try code.print(
                         allocator,
@@ -398,7 +401,7 @@ fn genExpression(allocator: std.mem.Allocator, exp: ASTNode, to: Location, ctx: 
                         .{try getOffset(ctx, operand.tokens[0].lexeme.value)},
                     );
                 } else unreachable;
-            }
+            } else unreachable;
         },
         else => unreachable,
     }

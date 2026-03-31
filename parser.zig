@@ -186,7 +186,13 @@ fn parseScope(allocator: std.mem.Allocator, tokens: []Token) !ASTNode {
                 a.children[1] = .{ .tokens = tokens[i + 1 .. i + 2], .nodeType = .operator };
                 a.children[2] = try parseExpression(allocator, tokens[i + 2 .. semicolon]);
                 try children.append(allocator, a);
-            } else unreachable;
+            } else {
+                try children.append(allocator, try parseExpression(allocator, tokens[i..semicolon]));
+            }
+            i = semicolon;
+        } else if (tokens[i].info == .operator) {
+            const semicolon = findSemicolon(tokens, i);
+            try children.append(allocator, try parseExpression(allocator, tokens[i..semicolon]));
             i = semicolon;
         } else {
             std.debug.print("{any}\n", .{tokens[i]});
@@ -347,6 +353,7 @@ const BindingPower = enum {
     eq,
     logand,
     logor,
+    cmp,
     fn toValue(self: BindingPower) usize {
         return switch (self) {
             .paren => 16,
@@ -354,6 +361,7 @@ const BindingPower = enum {
             .unary => 15,
             .mul, .div => 13,
             .add, .sub => 12,
+            .cmp => 10,
             .eq => 9,
             .logand => 5,
             .logor => 4,
@@ -391,9 +399,17 @@ fn bindingPower(tokens: []Token, i: usize) BindingPower {
         else if (tokens[i].is("--"))
             .unary
         else if (tokens[i].is("&&"))
-            .unary
+            .logand
         else if (tokens[i].is("||"))
-            .unary
+            .logor
+        else if (tokens[i].is(">"))
+            .cmp
+        else if (tokens[i].is("<"))
+            .cmp
+        else if (tokens[i].is(">="))
+            .cmp
+        else if (tokens[i].is("<="))
+            .cmp
         else
             unreachable;
     }

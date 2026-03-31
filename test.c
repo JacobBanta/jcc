@@ -1,4 +1,4 @@
 int main() {
-  if (1 || 0)
-    return 1;
+  int x = 0;
+  return x++;
 }
