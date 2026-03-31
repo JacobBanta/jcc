@@ -2,7 +2,7 @@
 ### Jacob's C Compiler
 A C compiler that almost sort of works.
 ## Dependencies
-Zig 0.16.0-dev.3039+b490412cd, NASM, and ld
+Zig 0.16.0-dev.3059+42e33db9d, NASM, and ld
 ## Usage
 ```bash
 jcc --help
