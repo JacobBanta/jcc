@@ -381,7 +381,6 @@ fn bindingPower(tokens: []Token, i: usize) BindingPower {
         return .unary;
     }
     if (tokens[i].info == .operator) {
-        assert(tokens[i].lexeme.value.len == 1);
         return if (tokens[i].is("+"))
             .add
         else if (tokens[i].is("-"))
