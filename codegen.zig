@@ -383,6 +383,8 @@ fn genExpression(allocator: std.mem.Allocator, exp: ASTNode, to: Location, ctx: 
                         .{ .variable = operand.tokens[0].lexeme.value },
                         ctx,
                     ));
+                } else if (op.tokens[0].is("!")) {
+                    try code.appendSlice(allocator, "cmp rax, 0\nsete al\nmovzx rax, al\n");
                 } else unreachable;
             } else if (!is_prefix) {
                 const operand = exp.children[0];
