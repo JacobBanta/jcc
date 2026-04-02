@@ -206,6 +206,12 @@ pub fn genCode(allocator: std.mem.Allocator, ast: []const ASTNode, ctx: ?*Contex
                     ctx.?,
                 ));
             },
+            .label => {
+                try code.print(allocator, "{s}:\n", .{node.tokens[0].lexeme.value});
+            },
+            .goto => {
+                try code.print(allocator, "jmp {s}\n", .{node.tokens[1].lexeme.value});
+            },
             else => unreachable,
         }
     }

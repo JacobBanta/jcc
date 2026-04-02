@@ -12,6 +12,8 @@ pub const ASTNode = struct {
         binary_expression,
         function_call,
         function,
+        label,
+        goto,
         statement,
         literal,
         type,
@@ -183,9 +185,19 @@ fn parseScope(allocator: std.mem.Allocator, tokens: []Token) !ASTNode {
                     }
                     try children.append(allocator, a);
                 },
+                .goto => {
+                    assert(tokens[i + 2].is(";"));
+                    try children.append(allocator, .{ .tokens = tokens[i .. i + 3], .nodeType = .goto });
+                    i += 2;
+                },
                 else => unreachable,
             }
         } else if (tokens[i].info == .identifier) {
+            if (tokens[i + 1].is(":")) {
+                try children.append(allocator, .{ .tokens = tokens[i .. i + 2], .nodeType = .label });
+                i += 1;
+                continue;
+            }
             const semicolon = findSemicolon(tokens, i);
             if (tokens[i + 1].info != .operator) unreachable;
             if (tokens[i + 1].is("=") or

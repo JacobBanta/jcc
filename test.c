@@ -1,4 +1,6 @@
 int main() {
-  int x = 0;
-  return x++;
+  goto lbl;
+  return 1;
+lbl:
+  return 0;
 }

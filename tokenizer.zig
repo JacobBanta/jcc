@@ -77,7 +77,7 @@ fn lexemize(allocator: std.mem.Allocator, source: []const u8) ![]Lexeme {
                 i += end - 1;
             },
             'a'...'z', 'A'...'Z', '_' => {
-                const end = std.mem.findAny(u8, source[i..], whitespace ++ ".,()[]{};" ++ operators).?;
+                const end = std.mem.findAny(u8, source[i..], whitespace ++ ".,()[]{}:;" ++ operators).?;
                 try lexemes.append(allocator, .{
                     .position = .{
                         .col = col,
@@ -103,7 +103,7 @@ fn lexemize(allocator: std.mem.Allocator, source: []const u8) ![]Lexeme {
                 col += end;
                 i += end - 1;
             },
-            '(', ')', '[', ']', '{', '}', ',', '.', ';' => {
+            '(', ')', '[', ']', '{', '}', ',', '.', ':', ';' => {
                 try lexemes.append(allocator, .{
                     .position = .{
                         .col = col,
@@ -178,6 +178,7 @@ pub const Keyword = enum {
     @"for",
     @"while",
     do,
+    goto,
 };
 pub const Punctuation = enum {
     @"(",
@@ -189,6 +190,7 @@ pub const Punctuation = enum {
     @",",
     @".",
     @";",
+    @":",
     pub fn fromChar(c: u8) Punctuation {
         return switch (c) {
             '(' => .@"(",
@@ -200,6 +202,7 @@ pub const Punctuation = enum {
             ',' => .@",",
             '.' => .@".",
             ';' => .@";",
+            ':' => .@":",
             else => unreachable,
         };
     }
@@ -241,7 +244,7 @@ fn tokenize(lexeme: Lexeme) !Token {
         '+', '-', '*', '/', '%', '<', '=', '>', '!', '~', '&', '|', '^' => {
             return .{ .lexeme = lexeme, .info = .operator };
         },
-        '(', ')', '[', ']', '{', '}', ',', '.', ';' => |p| {
+        '(', ')', '[', ']', '{', '}', ',', '.', ':', ';' => |p| {
             return .{ .lexeme = lexeme, .info = .{ .punctuation = .fromChar(p) } };
         },
         '"' => {
