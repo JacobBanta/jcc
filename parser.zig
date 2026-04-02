@@ -168,7 +168,21 @@ fn parseScope(allocator: std.mem.Allocator, tokens: []Token) !ASTNode {
                     }
                     try children.append(allocator, a);
                 },
-                .@"for", .@"while", .do => return error.SkipZigTest,
+                .@"while" => {
+                    var a: ASTNode = .{ .tokens = tokens[i .. semicolon + 1], .nodeType = .statement };
+                    a.children = try allocator.alloc(ASTNode, 2);
+                    a.children[0] = try parseExpression(allocator, tokens[i + 1 .. i + 2 + findClosingParen(tokens[i + 1 ..], 0)]);
+                    const scopeStart = findClosingParen(tokens, i + 1) + 1;
+                    if (tokens[scopeStart].is("{")) {
+                        const scopeEnd = findClosingBrace(tokens, scopeStart);
+                        a.children[1] = try parseScope(allocator, tokens[scopeStart .. scopeEnd + 1]);
+                        i = scopeEnd;
+                    } else {
+                        a.children[1] = try parseScope(allocator, tokens[scopeStart - 1 .. semicolon + 1]);
+                        i = semicolon;
+                    }
+                    try children.append(allocator, a);
+                },
                 else => unreachable,
             }
         } else if (tokens[i].info == .identifier) {

@@ -107,8 +107,36 @@ pub fn genCode(allocator: std.mem.Allocator, ast: []const ASTNode, ctx: ?*Contex
                         \\{0s}:
                         \\{3s}
                         \\{1s}:
+                        \\
                     ,
                         .{ else_label, end_if, inner, else_code },
+                    );
+                } else if (node.tokens[0].is("while")) {
+                    const condition = try genExpression(
+                        allocator,
+                        node.children[0],
+                        .{ .register = .rax },
+                        ctx.?,
+                    );
+                    defer allocator.free(condition);
+                    const inner = try genCode(allocator, &.{node.children[1]}, ctx);
+                    defer allocator.free(inner);
+                    const start_label = try std.fmt.allocPrint(allocator, "__internal_label_{d}__", .{uniqueID.fetchAdd(1, .acq_rel)});
+                    defer allocator.free(start_label);
+                    const end_label = try std.fmt.allocPrint(allocator, "__internal_label_{d}__", .{uniqueID.fetchAdd(1, .acq_rel)});
+                    defer allocator.free(end_label);
+                    try code.print(
+                        allocator,
+                        \\{0s}:
+                        \\{2s}
+                        \\cmp rax, 0
+                        \\je {1s}
+                        \\{3s}
+                        \\jmp {0s}
+                        \\{1s}:
+                        \\
+                    ,
+                        .{ start_label, end_label, condition, inner },
                     );
                 } else unreachable;
             },
