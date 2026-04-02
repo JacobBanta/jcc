@@ -73,6 +73,15 @@ pub fn genCode(allocator: std.mem.Allocator, ast: []const ASTNode, ctx: ?*Contex
                     );
                 }
             },
+            .fake_scope => {
+                for (node.children) |child| {
+                    try append(
+                        allocator,
+                        &code,
+                        try genCode(allocator, &.{child}, ctx),
+                    );
+                }
+            },
             .statement => {
                 if (node.tokens[0].is("return")) {
                     try append(allocator, &code, try genExpression(
@@ -137,6 +146,53 @@ pub fn genCode(allocator: std.mem.Allocator, ast: []const ASTNode, ctx: ?*Contex
                         \\
                     ,
                         .{ start_label, end_label, condition, inner },
+                    );
+                } else if (node.tokens[0].is("for")) {
+                    const declarationsLength = ctx.?.declarations.items.len;
+                    defer ctx.?.declarations.shrinkRetainingCapacity(declarationsLength);
+                    const precondition = try genCode(
+                        allocator,
+                        node.children[0..1],
+                        ctx.?,
+                    );
+                    defer allocator.free(precondition);
+                    const condition = try genExpression(
+                        allocator,
+                        node.children[1],
+                        .{ .register = .rax },
+                        ctx.?,
+                    );
+                    defer allocator.free(condition);
+                    const postcondition = try genCode(
+                        allocator,
+                        node.children[2..3],
+                        ctx.?,
+                    );
+                    defer allocator.free(postcondition);
+                    const inner = try genCode(allocator, &.{node.children[3]}, ctx);
+                    defer allocator.free(inner);
+                    const start_label = try std.fmt.allocPrint(allocator, "__internal_label_{d}__", .{uniqueID.fetchAdd(1, .acq_rel)});
+                    defer allocator.free(start_label);
+                    const condition_label = try std.fmt.allocPrint(allocator, "__internal_label_{d}__", .{uniqueID.fetchAdd(1, .acq_rel)});
+                    defer allocator.free(condition_label);
+                    const end_label = try std.fmt.allocPrint(allocator, "__internal_label_{d}__", .{uniqueID.fetchAdd(1, .acq_rel)});
+                    defer allocator.free(end_label);
+                    try code.print(
+                        allocator,
+                        \\{3s}
+                        \\jmp {1s}
+                        \\{0s}:
+                        \\{5s}
+                        \\{1s}:
+                        \\{4s}
+                        \\cmp rax, 0
+                        \\je {2s}
+                        \\{6s}
+                        \\jmp {0s}
+                        \\{2s}:
+                        \\
+                    ,
+                        .{ start_label, condition_label, end_label, precondition, condition, postcondition, inner },
                     );
                 } else unreachable;
             },
@@ -273,8 +329,10 @@ fn getOffset(ctx: *Context, name: []const u8) !usize {
             loc = (i + 1) * 8;
         }
     }
-    if (loc == 0)
+    if (loc == 0) {
+        std.log.debug("{s}", .{name});
         return error.UnexpectedIdentifier;
+    }
     return loc;
 }
 var uniqueID: std.atomic.Value(usize) = .init(0);

@@ -19,6 +19,8 @@ pub const ASTNode = struct {
         type,
         variable,
         scope,
+        // same as scope, but it does not reset declarations
+        fake_scope,
         operator,
     },
     children: []ASTNode = &.{},
@@ -100,6 +102,7 @@ fn parseArgs(allocator: std.mem.Allocator, tokens: []Token, fill: *std.ArrayList
 }
 fn parseScope(allocator: std.mem.Allocator, tokens: []Token) !ASTNode {
     var node: ASTNode = .{ .nodeType = .scope, .tokens = tokens };
+    if (!node.tokens[0].is("{")) node.nodeType = .fake_scope;
     var children = std.ArrayList(ASTNode).empty;
     errdefer {
         for (children.items) |*c| {
@@ -138,7 +141,8 @@ fn parseScope(allocator: std.mem.Allocator, tokens: []Token) !ASTNode {
                     i = semicolon;
                 },
                 .@"if" => {
-                    var a: ASTNode = .{ .tokens = tokens[i .. semicolon + 1], .nodeType = .statement };
+                    const start_i = i;
+                    var a: ASTNode = .{ .nodeType = .statement };
                     a.children = try allocator.alloc(ASTNode, 2);
                     a.children[0] = try parseExpression(allocator, tokens[i + 1 .. i + 2 + findClosingParen(tokens[i + 1 ..], 0)]);
                     const scopeStart = findClosingParen(tokens, i + 1) + 1;
@@ -147,7 +151,10 @@ fn parseScope(allocator: std.mem.Allocator, tokens: []Token) !ASTNode {
                         a.children[1] = try parseScope(allocator, tokens[scopeStart .. scopeEnd + 1]);
                         i = scopeEnd;
                     } else {
-                        a.children[1] = try parseScope(allocator, tokens[scopeStart - 1 .. semicolon + 1]);
+                        a.children[1] = .{ .nodeType = .scope, .tokens = tokens[scopeStart - 1 .. semicolon + 1] };
+                        a.children[1].children = try allocator.alloc(ASTNode, 1);
+                        a.children[1].children[0] =
+                            try parseScope(allocator, tokens[scopeStart - 1 .. semicolon + 1]);
                         i = semicolon;
                     }
                     var j = i + 1;
@@ -165,13 +172,15 @@ fn parseScope(allocator: std.mem.Allocator, tokens: []Token) !ASTNode {
                                 }
                             } else break;
                         }
-                        a.children[2] = try parseScope(allocator, tokens[i + 1 .. j]);
+                        a.children[2] = try parseScope(allocator, tokens[i + 1 .. j + 1]);
                         i = j;
                     }
+                    a.tokens = tokens[start_i .. i + 1];
                     try children.append(allocator, a);
                 },
                 .@"while" => {
-                    var a: ASTNode = .{ .tokens = tokens[i .. semicolon + 1], .nodeType = .statement };
+                    const start_i = i;
+                    var a: ASTNode = .{ .nodeType = .statement };
                     a.children = try allocator.alloc(ASTNode, 2);
                     a.children[0] = try parseExpression(allocator, tokens[i + 1 .. i + 2 + findClosingParen(tokens[i + 1 ..], 0)]);
                     const scopeStart = findClosingParen(tokens, i + 1) + 1;
@@ -180,9 +189,39 @@ fn parseScope(allocator: std.mem.Allocator, tokens: []Token) !ASTNode {
                         a.children[1] = try parseScope(allocator, tokens[scopeStart .. scopeEnd + 1]);
                         i = scopeEnd;
                     } else {
-                        a.children[1] = try parseScope(allocator, tokens[scopeStart - 1 .. semicolon + 1]);
+                        a.children[1] = .{ .nodeType = .scope, .tokens = tokens[scopeStart - 1 .. semicolon + 1] };
+                        a.children[1].children = try allocator.alloc(ASTNode, 1);
+                        a.children[1].children[0] =
+                            try parseScope(allocator, tokens[scopeStart - 1 .. semicolon + 1]);
                         i = semicolon;
                     }
+                    a.tokens = tokens[start_i .. i + 1];
+                    try children.append(allocator, a);
+                },
+                .@"for" => {
+                    const start_i = i;
+                    var a: ASTNode = .{ .nodeType = .statement };
+                    a.children = try allocator.alloc(ASTNode, 4);
+                    a.children[0] = try parseScope(allocator, tokens[i + 1 .. semicolon + 1]);
+                    assert(a.children[0].nodeType == .fake_scope);
+                    assert(a.children[0].children[0].nodeType == .declaration);
+                    const semicolon2 = findSemicolon(tokens, semicolon + 1);
+                    a.children[1] = try parseExpression(allocator, tokens[semicolon + 1 .. semicolon2]);
+                    const scopeStart = findClosingParen(tokens, i + 1) + 1;
+                    a.children[2] = try parseScope(allocator, tokens[semicolon2..scopeStart]);
+                    const semicolon3 = findSemicolon(tokens, semicolon2 + 1);
+                    if (tokens[scopeStart].is("{")) {
+                        const scopeEnd = findClosingBrace(tokens, scopeStart);
+                        a.children[3] = try parseScope(allocator, tokens[scopeStart .. scopeEnd + 1]);
+                        i = scopeEnd;
+                    } else {
+                        a.children[1] = .{ .nodeType = .scope, .tokens = tokens[scopeStart - 1 .. semicolon + 1] };
+                        a.children[1].children = try allocator.alloc(ASTNode, 1);
+                        a.children[1].children[0] =
+                            try parseScope(allocator, tokens[scopeStart - 1 .. semicolon3 + 1]);
+                        i = semicolon3;
+                    }
+                    a.tokens = tokens[start_i .. i + 1];
                     try children.append(allocator, a);
                 },
                 .goto => {
@@ -306,7 +345,8 @@ fn findSemicolon(tokens: []Token, i: usize) usize {
             return idx;
         }
     }
-    unreachable;
+    return tokens.len - 1;
+    // unreachable;
 }
 /// returns an expression node
 fn binExpr(
