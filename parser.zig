@@ -224,6 +224,30 @@ fn parseScope(allocator: std.mem.Allocator, tokens: []Token) !ASTNode {
                     a.tokens = tokens[start_i .. i + 1];
                     try children.append(allocator, a);
                 },
+                .do => {
+                    const start_i = i;
+                    var a: ASTNode = .{ .nodeType = .statement };
+                    a.children = try allocator.alloc(ASTNode, 2);
+                    const scopeStart = i + 1;
+                    if (tokens[scopeStart].is("{")) {
+                        const scopeEnd = findClosingBrace(tokens, scopeStart);
+                        a.children[0] = try parseScope(allocator, tokens[scopeStart .. scopeEnd + 1]);
+                        i = scopeEnd;
+                    } else {
+                        a.children[0] = .{ .nodeType = .scope, .tokens = tokens[scopeStart - 1 .. semicolon + 1] };
+                        a.children[0].children = try allocator.alloc(ASTNode, 1);
+                        a.children[0].children[0] =
+                            try parseScope(allocator, tokens[scopeStart - 1 .. semicolon + 1]);
+                        i = semicolon;
+                    }
+                    i += 1;
+                    assert(tokens[i].is("while"));
+                    a.children[1] = try parseExpression(allocator, tokens[i + 1 .. 1 + findClosingParen(tokens, i + 1)]);
+                    i = 1 + findClosingParen(tokens, i + 1);
+                    assert(tokens[i].is(";"));
+                    a.tokens = tokens[start_i .. i + 1];
+                    try children.append(allocator, a);
+                },
                 .goto => {
                     assert(tokens[i + 2].is(";"));
                     try children.append(allocator, .{ .tokens = tokens[i .. i + 3], .nodeType = .statement });

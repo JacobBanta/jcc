@@ -153,6 +153,38 @@ pub fn genCode(allocator: std.mem.Allocator, ast: []const ASTNode, ctx: ?*Contex
                     ,
                         .{ start_label, end_label, condition, inner },
                     );
+                } else if (node.tokens[0].is("do")) {
+                    const @"continue" = ctx.?.@"continue";
+                    defer ctx.?.@"continue" = @"continue";
+                    const @"break" = ctx.?.@"break";
+                    defer ctx.?.@"break" = @"break";
+                    const condition = try genExpression(
+                        allocator,
+                        node.children[1],
+                        .{ .register = .rax },
+                        ctx.?,
+                    );
+                    defer allocator.free(condition);
+                    const start_label = try std.fmt.allocPrint(allocator, "__internal_label_{d}__", .{uniqueID.fetchAdd(1, .acq_rel)});
+                    defer allocator.free(start_label);
+                    const end_label = try std.fmt.allocPrint(allocator, "__internal_label_{d}__", .{uniqueID.fetchAdd(1, .acq_rel)});
+                    defer allocator.free(end_label);
+                    ctx.?.@"continue" = start_label;
+                    ctx.?.@"break" = end_label;
+                    const inner = try genCode(allocator, &.{node.children[0]}, ctx);
+                    defer allocator.free(inner);
+                    try code.print(
+                        allocator,
+                        \\{0s}:
+                        \\{3s}
+                        \\{2s}
+                        \\cmp rax, 0
+                        \\jne {0s}
+                        \\{1s}:
+                        \\
+                    ,
+                        .{ start_label, end_label, condition, inner },
+                    );
                 } else if (node.tokens[0].is("for")) {
                     const declarationsLength = ctx.?.declarations.items.len;
                     defer ctx.?.declarations.shrinkRetainingCapacity(declarationsLength);
