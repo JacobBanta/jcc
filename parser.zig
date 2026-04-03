@@ -226,8 +226,18 @@ fn parseScope(allocator: std.mem.Allocator, tokens: []Token) !ASTNode {
                 },
                 .goto => {
                     assert(tokens[i + 2].is(";"));
-                    try children.append(allocator, .{ .tokens = tokens[i .. i + 3], .nodeType = .goto });
+                    try children.append(allocator, .{ .tokens = tokens[i .. i + 3], .nodeType = .statement });
                     i += 2;
+                },
+                .@"continue" => {
+                    assert(tokens[i + 1].is(";"));
+                    try children.append(allocator, .{ .tokens = tokens[i .. i + 2], .nodeType = .statement });
+                    i += 1;
+                },
+                .@"break" => {
+                    assert(tokens[i + 1].is(";"));
+                    try children.append(allocator, .{ .tokens = tokens[i .. i + 2], .nodeType = .statement });
+                    i += 1;
                 },
                 else => unreachable,
             }

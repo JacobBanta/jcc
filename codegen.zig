@@ -26,6 +26,8 @@ pub const main_epilogue = "mov rax, 0\n" ++ epilogue;
 
 const Context = struct {
     declarations: std.ArrayList(ASTNode) = .empty,
+    @"continue": []const u8 = "",
+    @"break": []const u8 = "",
 };
 const Location = union(enum) {
     register: enum { rax, rdi, rbx, rcx, rdx },
@@ -34,11 +36,9 @@ const Location = union(enum) {
 };
 pub fn genCode(allocator: std.mem.Allocator, ast: []const ASTNode, ctx: ?*Context) ![]const u8 {
     if (ctx == null) {
-        var c = try allocator.create(Context);
-        defer allocator.destroy(c);
-        c.declarations = .empty;
+        var c: Context = .{};
         defer c.declarations.deinit(allocator);
-        return try genCode(allocator, ast, c);
+        return try genCode(allocator, ast, &c);
     }
     var code = std.ArrayList(u8).empty;
 
@@ -121,6 +121,10 @@ pub fn genCode(allocator: std.mem.Allocator, ast: []const ASTNode, ctx: ?*Contex
                         .{ else_label, end_if, inner, else_code },
                     );
                 } else if (node.tokens[0].is("while")) {
+                    const @"continue" = ctx.?.@"continue";
+                    defer ctx.?.@"continue" = @"continue";
+                    const @"break" = ctx.?.@"break";
+                    defer ctx.?.@"break" = @"break";
                     const condition = try genExpression(
                         allocator,
                         node.children[0],
@@ -128,12 +132,14 @@ pub fn genCode(allocator: std.mem.Allocator, ast: []const ASTNode, ctx: ?*Contex
                         ctx.?,
                     );
                     defer allocator.free(condition);
-                    const inner = try genCode(allocator, &.{node.children[1]}, ctx);
-                    defer allocator.free(inner);
                     const start_label = try std.fmt.allocPrint(allocator, "__internal_label_{d}__", .{uniqueID.fetchAdd(1, .acq_rel)});
                     defer allocator.free(start_label);
                     const end_label = try std.fmt.allocPrint(allocator, "__internal_label_{d}__", .{uniqueID.fetchAdd(1, .acq_rel)});
                     defer allocator.free(end_label);
+                    ctx.?.@"continue" = start_label;
+                    ctx.?.@"break" = end_label;
+                    const inner = try genCode(allocator, &.{node.children[1]}, ctx);
+                    defer allocator.free(inner);
                     try code.print(
                         allocator,
                         \\{0s}:
@@ -150,6 +156,18 @@ pub fn genCode(allocator: std.mem.Allocator, ast: []const ASTNode, ctx: ?*Contex
                 } else if (node.tokens[0].is("for")) {
                     const declarationsLength = ctx.?.declarations.items.len;
                     defer ctx.?.declarations.shrinkRetainingCapacity(declarationsLength);
+                    const @"continue" = ctx.?.@"continue";
+                    defer ctx.?.@"continue" = @"continue";
+                    const @"break" = ctx.?.@"break";
+                    defer ctx.?.@"break" = @"break";
+                    const start_label = try std.fmt.allocPrint(allocator, "__internal_label_{d}__", .{uniqueID.fetchAdd(1, .acq_rel)});
+                    defer allocator.free(start_label);
+                    const condition_label = try std.fmt.allocPrint(allocator, "__internal_label_{d}__", .{uniqueID.fetchAdd(1, .acq_rel)});
+                    defer allocator.free(condition_label);
+                    const end_label = try std.fmt.allocPrint(allocator, "__internal_label_{d}__", .{uniqueID.fetchAdd(1, .acq_rel)});
+                    defer allocator.free(end_label);
+                    ctx.?.@"continue" = start_label;
+                    ctx.?.@"break" = end_label;
                     const precondition = try genCode(
                         allocator,
                         node.children[0..1],
@@ -171,12 +189,6 @@ pub fn genCode(allocator: std.mem.Allocator, ast: []const ASTNode, ctx: ?*Contex
                     defer allocator.free(postcondition);
                     const inner = try genCode(allocator, &.{node.children[3]}, ctx);
                     defer allocator.free(inner);
-                    const start_label = try std.fmt.allocPrint(allocator, "__internal_label_{d}__", .{uniqueID.fetchAdd(1, .acq_rel)});
-                    defer allocator.free(start_label);
-                    const condition_label = try std.fmt.allocPrint(allocator, "__internal_label_{d}__", .{uniqueID.fetchAdd(1, .acq_rel)});
-                    defer allocator.free(condition_label);
-                    const end_label = try std.fmt.allocPrint(allocator, "__internal_label_{d}__", .{uniqueID.fetchAdd(1, .acq_rel)});
-                    defer allocator.free(end_label);
                     try code.print(
                         allocator,
                         \\{3s}
@@ -194,6 +206,12 @@ pub fn genCode(allocator: std.mem.Allocator, ast: []const ASTNode, ctx: ?*Contex
                     ,
                         .{ start_label, condition_label, end_label, precondition, condition, postcondition, inner },
                     );
+                } else if (node.tokens[0].is("goto")) {
+                    try code.print(allocator, "jmp {s}\n", .{node.tokens[1].lexeme.value});
+                } else if (node.tokens[0].is("continue")) {
+                    try code.print(allocator, "jmp {s}\n", .{ctx.?.@"continue"});
+                } else if (node.tokens[0].is("break")) {
+                    try code.print(allocator, "jmp {s}\n", .{ctx.?.@"break"});
                 } else unreachable;
             },
             .declaration => {
@@ -264,9 +282,6 @@ pub fn genCode(allocator: std.mem.Allocator, ast: []const ASTNode, ctx: ?*Contex
             },
             .label => {
                 try code.print(allocator, "{s}:\n", .{node.tokens[0].lexeme.value});
-            },
-            .goto => {
-                try code.print(allocator, "jmp {s}\n", .{node.tokens[1].lexeme.value});
             },
             else => unreachable,
         }

@@ -179,6 +179,8 @@ pub const Keyword = enum {
     @"while",
     do,
     goto,
+    @"break",
+    @"continue",
 };
 pub const Punctuation = enum {
     @"(",
