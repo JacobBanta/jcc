@@ -215,9 +215,9 @@ fn parseScope(allocator: std.mem.Allocator, tokens: []Token) !ASTNode {
                         a.children[3] = try parseScope(allocator, tokens[scopeStart .. scopeEnd + 1]);
                         i = scopeEnd;
                     } else {
-                        a.children[1] = .{ .nodeType = .scope, .tokens = tokens[scopeStart - 1 .. semicolon + 1] };
-                        a.children[1].children = try allocator.alloc(ASTNode, 1);
-                        a.children[1].children[0] =
+                        a.children[3] = .{ .nodeType = .scope, .tokens = tokens[scopeStart - 1 .. semicolon3 + 1] };
+                        a.children[3].children = try allocator.alloc(ASTNode, 1);
+                        a.children[3].children[0] =
                             try parseScope(allocator, tokens[scopeStart - 1 .. semicolon3 + 1]);
                         i = semicolon3;
                     }
@@ -426,8 +426,6 @@ fn unExprPost(
     lhs: []Token,
     op: Token,
 ) error{OutOfMemory}!ASTNode {
-    // assert(op.info == .operator);
-    // assert(lhs[0].info != .operator);
     assert(std.meta.eql(op, @as(*Token, @ptrFromInt(@intFromPtr(lhs.ptr) + @sizeOf(Token) * lhs.len)).*));
     var child = try allocator.alloc(ASTNode, 1);
     const tokens: []Token = @as([*c]Token, @ptrCast(lhs.ptr))[0 .. lhs.len + 1];

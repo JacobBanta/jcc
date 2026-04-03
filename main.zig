@@ -439,3 +439,23 @@ test "outer variable unchanged after inner shadow" {
 test "variable declared inside if" {
     try std.testing.expectEqual(42, try compileAndRun("int main(){if(1){int x = 42; return x;}return 1;}"));
 }
+
+test "subtraction is left associative" {
+    try std.testing.expectEqual(5, try compileAndRun("int main(){return 10 - 3 - 2;}"));
+}
+
+test "division is left associative" {
+    try std.testing.expectEqual(3, try compileAndRun("int main(){return 24 / 4 / 2;}"));
+}
+
+test "modulo precedence over addition" {
+    try std.testing.expectEqual(3, try compileAndRun("int main(){return 2 + 10 % 3;}"));
+}
+
+test "if else without braces" {
+    try std.testing.expectEqual(42, try compileAndRun("int main(){int x = 0; if(x == 0) return 42; else return 1;}"));
+}
+
+test "for loop condition is evaluated" {
+    try std.testing.expectEqual(3, try compileAndRun("int main(){int s = 0; for(int i = 0; i < 3; i++) s += 1; return s;}"));
+}

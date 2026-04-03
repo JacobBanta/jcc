@@ -293,7 +293,7 @@ fn validateNumber(number: []const u8) !void {
                 return error.InvalidNumber;
             }
         } else if (base == .hex) {
-            if (number[i] < '0' or number[i] > '9' and number[i] < 'A' or number[i] > 'F') {
+            if ((number[i] < '0' or number[i] > '9') and (number[i] < 'A' or number[i] > 'F')) {
                 return error.InvalidNumber;
             }
         }
