@@ -491,6 +491,8 @@ fn bindingPower(tokens: []Token, i: usize) BindingPower {
             .div
         else if (tokens[i].is("=="))
             .eq
+        else if (tokens[i].is("!="))
+            .eq
         else if (tokens[i].is("++"))
             .unary
         else if (tokens[i].is("--"))

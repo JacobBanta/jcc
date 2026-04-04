@@ -459,3 +459,39 @@ test "if else without braces" {
 test "for loop condition is evaluated" {
     try std.testing.expectEqual(3, try compileAndRun("int main(){int s = 0; for(int i = 0; i < 3; i++) s += 1; return s;}"));
 }
+
+test "ne with expression rhs" {
+    try std.testing.expectEqual(42, try compileAndRun("int main(){if(1 != 0 + 0){return 42;}return 1;}"));
+}
+
+test "binary op after unary minus" {
+    try std.testing.expectEqual(42, try compileAndRun("int main(){int a = 1; int b = 2; int c = 43; return a + -b + c;}"));
+}
+
+test "else if chain with expression bodies" {
+    try std.testing.expectEqual(42, try compileAndRun("int main(){int x = 3; if(x == 1) return 1; else if(x == 2) return 2; else if(x == 3) return 42; else return 4;}"));
+}
+
+test "else if braces-free chain" {
+    try std.testing.expectEqual(42, try compileAndRun("int main(){int x = 3; if(x == 1) return 1; else if(x == 2) return 2; else if(x == 3) return 42; else return 4;}"));
+}
+
+test "else if falls through to else" {
+    try std.testing.expectEqual(42, try compileAndRun("int main(){int x = 5; if(x == 1) return 1; else if(x == 2) return 2; else return 42;}"));
+}
+
+test "while without braces" {
+    try std.testing.expectEqual(42, try compileAndRun("int main(){int x = 0; while(x < 42) x += 1; return x;}"));
+}
+
+test "do while without braces" {
+    try std.testing.expectEqual(42, try compileAndRun("int main(){int x = 0; do x += 6; while(x < 42); return x;}"));
+}
+
+test "nested if else chains" {
+    try std.testing.expectEqual(42, try compileAndRun("int main(){int x = 1; int y = 2; if(x == 1){if(y == 1) return 1; else if(y == 2) return 42; else return 3;} return 4;}"));
+}
+
+test "for without braces" {
+    try std.testing.expectEqual(42, try compileAndRun("int main(){int s = 0; for(int i = 0; i < 7; i++) s += 6; return s;}"));
+}
