@@ -54,7 +54,7 @@ pub fn genCode(allocator: std.mem.Allocator, ast: []const ASTNode, ctx: ?*Contex
                     try append(
                         allocator,
                         &code,
-                        try genCode(allocator, ast[0].children, ctx),
+                        try genCode(allocator, node.children, ctx),
                     );
                     if (node.tokens[1].is("main")) {
                         try code.appendSlice(allocator, main_epilogue);

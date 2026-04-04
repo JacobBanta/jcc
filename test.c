@@ -1,5 +1,2 @@
-int main() {
-	while(1){
-		break;
-	}
-}
+int fn() {return 42;}
+int main() {return 0;}

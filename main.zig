@@ -52,11 +52,20 @@ pub fn main(init: std.process.Init) !void {
             std.debug.print("{any}: {s}\n", .{ t.info, t.lexeme.value });
         }
     }
-    var ast = try parser.parse(allocator, tokens);
-    defer ast.deinit(allocator);
-    if (res.args.debug != 0)
-        std.debug.print("{f}", .{ast});
-    const @"asm" = try codegen.genCode(allocator, &.{ast}, null);
+    const ast = try parser.parse(allocator, tokens);
+    defer {
+        for (ast) |*node| {
+            node.deinit(allocator);
+        }
+        allocator.free(ast);
+    }
+
+    if (res.args.debug != 0) {
+        for (ast) |node| {
+            std.debug.print("{f}", .{node});
+        }
+    }
+    const @"asm" = try codegen.genCode(allocator, ast, null);
     defer allocator.free(@"asm");
     const file_out = try cwd.createFile(init.io, res.args.out orelse "a.out.asm", .{});
     defer file_out.close(init.io);
@@ -72,9 +81,14 @@ fn compileAndRun(source: []const u8) !u8 {
         const allocator = std.testing.allocator;
         const tokens = try tokenizer.lex(allocator, source);
         defer allocator.free(tokens);
-        var ast = try parser.parse(allocator, tokens);
-        defer ast.deinit(allocator);
-        const @"asm" = try codegen.genCode(allocator, &.{ast}, null);
+        const ast = try parser.parse(allocator, tokens);
+        defer {
+            for (ast) |*node| {
+                node.deinit(allocator);
+            }
+            allocator.free(ast);
+        }
+        const @"asm" = try codegen.genCode(allocator, ast, null);
         defer allocator.free(@"asm");
         const asm_source = try std.mem.join(allocator, "", &.{ codegen._start, @"asm" });
         defer allocator.free(asm_source);

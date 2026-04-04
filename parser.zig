@@ -46,9 +46,11 @@ pub const ASTNode = struct {
     }
 };
 
-pub fn parse(allocator: std.mem.Allocator, tokens: []Token) !ASTNode {
-    for (tokens, 0..) |t, i| {
-        if (t.is("int") and tokens[i + 2].is("(")) {
+pub fn parse(allocator: std.mem.Allocator, tokens: []Token) ![]ASTNode {
+    var nodes = std.ArrayList(ASTNode).empty;
+    var i: usize = 0;
+    while (i < tokens.len) : (i += 1) {
+        if (tokens[i].is("int") and tokens[i + 2].is("(")) {
             const end = blk: {
                 var depth: usize = 0;
                 for (tokens[i..], i..) |t2, ind| {
@@ -62,10 +64,11 @@ pub fn parse(allocator: std.mem.Allocator, tokens: []Token) !ASTNode {
                 }
                 unreachable;
             };
-            return try parseFunction(allocator, tokens[i .. end + 1]);
+            try nodes.append(allocator, try parseFunction(allocator, tokens[i .. end + 1]));
+            i = end;
         } else unreachable;
     }
-    unreachable;
+    return nodes.toOwnedSlice(allocator);
 }
 
 fn parseFunction(allocator: std.mem.Allocator, tokens: []Token) !ASTNode {
