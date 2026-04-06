@@ -1,5 +1,6 @@
 const std = @import("std");
 const ASTNode = @import("parser.zig").ASTNode;
+const Token = @import("tokenizer.zig").Token;
 const assert = std.debug.assert;
 pub const _start =
     \\global _start
@@ -30,9 +31,19 @@ const Context = struct {
     @"break": []const u8 = "",
 };
 const Location = union(enum) {
-    register: enum { rax, rdi, rbx, rcx, rdx },
+    register: Register,
     variable: []const u8,
     literal: []const u8,
+};
+const Register = enum {
+    rax,
+    rdi,
+    rbx,
+    rcx,
+    rdx,
+    rsi,
+    r8,
+    r9,
 };
 pub fn genCode(allocator: std.mem.Allocator, ast: []const ASTNode, ctx: ?*Context) ![]const u8 {
     if (ctx == null) {
@@ -41,26 +52,37 @@ pub fn genCode(allocator: std.mem.Allocator, ast: []const ASTNode, ctx: ?*Contex
         return try genCode(allocator, ast, &c);
     }
     var code = std.ArrayList(u8).empty;
+    errdefer code.deinit(allocator);
 
     for (ast) |node| {
         switch (node.nodeType) {
             .function => {
-                if (node.children.len == 1) {
-                    try code.appendSlice(allocator, "global ");
-                    try code.appendSlice(allocator, node.tokens[1].lexeme.value);
-                    try code.appendSlice(allocator, "\n");
-                    try code.appendSlice(allocator, node.tokens[1].lexeme.value);
-                    try code.appendSlice(allocator, ":\n" ++ prologue);
-                    try append(
+                const declarationsLength = ctx.?.declarations.items.len;
+                defer ctx.?.declarations.shrinkRetainingCapacity(declarationsLength);
+                try code.appendSlice(allocator, "global ");
+                try code.appendSlice(allocator, node.tokens[1].lexeme.value);
+                try code.appendSlice(allocator, "\n");
+                try code.appendSlice(allocator, node.tokens[1].lexeme.value);
+                try code.appendSlice(allocator, ":\n" ++ prologue);
+                for (node.children[0 .. node.children.len - 1], ([_]Register{ .rdi, .rsi, .rdx, .rcx, .r8, .r9 })[0 .. node.children.len - 1]) |arg, reg| {
+                    try ctx.?.declarations.append(allocator, .{ .nodeType = .variable, .tokens = arg.tokens });
+                    try append(allocator, &code, try move(
                         allocator,
-                        &code,
-                        try genCode(allocator, node.children, ctx),
-                    );
-                    if (node.tokens[1].is("main")) {
-                        try code.appendSlice(allocator, main_epilogue);
-                    }
-                } else unreachable;
+                        .{ .register = reg },
+                        .{ .variable = arg.tokens[0].lexeme.value },
+                        ctx.?,
+                    ));
+                }
+                try append(
+                    allocator,
+                    &code,
+                    try genCode(allocator, node.children[node.children.len - 1 ..], ctx),
+                );
+                if (node.tokens[1].is("main")) {
+                    try code.appendSlice(allocator, main_epilogue);
+                }
             },
+            .function_prototype => {},
             .scope => {
                 const declarationsLength = ctx.?.declarations.items.len;
                 defer ctx.?.declarations.shrinkRetainingCapacity(declarationsLength);
@@ -329,6 +351,7 @@ fn append(allocator: std.mem.Allocator, arraylist: *std.ArrayList(u8), items: []
 fn move(allocator: std.mem.Allocator, from: Location, to: Location, ctx: *Context) ![]const u8 {
     if (std.meta.eql(from, to)) return "";
     var code = std.ArrayList(u8).empty;
+    errdefer code.deinit(allocator);
     if (from == .variable and to == .variable) {
         const one = try move(allocator, from, .{ .register = .rax }, ctx);
         defer allocator.free(one);
@@ -543,6 +566,35 @@ fn genExpression(allocator: std.mem.Allocator, exp: ASTNode, to: Location, ctx: 
                     );
                 } else unreachable;
             } else unreachable;
+        },
+        .function_call => {
+            const declarationsLength = ctx.declarations.items.len;
+            defer ctx.declarations.shrinkRetainingCapacity(declarationsLength);
+            const params = try allocator.alloc([]const u8, exp.children.len - 1);
+            defer allocator.free(params);
+            for (params) |*param| {
+                param.* = try std.fmt.allocPrint(allocator, "__internal_expression_var_{d}__", .{uniqueID.fetchAdd(1, .acq_rel)});
+                try ctx.declarations.append(allocator, .{ .nodeType = .variable, .tokens = try allocator.dupe(Token, &.{.{ .lexeme = .{ .value = param.*, .position = undefined }, .info = .identifier }}) });
+            }
+            defer {
+                for (params, 0..) |*param, i| {
+                    allocator.free(param.*);
+                    allocator.free(ctx.declarations.items[declarationsLength + i].tokens);
+                }
+            }
+            for (0..params.len) |n| {
+                try append(allocator, &code, try genExpression(
+                    allocator,
+                    exp.children[n + 1],
+                    .{ .variable = params[n] },
+                    ctx,
+                ));
+            }
+            assert(params.len <= 6);
+            for (params, ([_]Register{ .rdi, .rsi, .rdx, .rcx, .r8, .r9 })[0..params.len]) |from, reg| {
+                try append(allocator, &code, try move(allocator, .{ .variable = from }, .{ .register = reg }, ctx));
+            }
+            try code.print(allocator, "sub rsp, {1d}\ncall {0s}\nadd rsp, {1d}\n", .{ exp.children[0].tokens[0].lexeme.value, ctx.declarations.items.len * 8 });
         },
         else => unreachable,
     }

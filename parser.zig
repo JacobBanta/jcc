@@ -12,6 +12,8 @@ pub const ASTNode = struct {
         binary_expression,
         function_call,
         function,
+        function_prototype,
+        arg,
         label,
         goto,
         statement,
@@ -54,6 +56,7 @@ pub fn parse(allocator: std.mem.Allocator, tokens: []Token) ![]ASTNode {
             const end = blk: {
                 var depth: usize = 0;
                 for (tokens[i..], i..) |t2, ind| {
+                    if (t2.is(";") and depth == 0) break :blk ind;
                     if (t2.is("{")) {
                         depth += 1;
                     } else if (t2.is("}")) {
@@ -87,9 +90,17 @@ fn parseFunction(allocator: std.mem.Allocator, tokens: []Token) !ASTNode {
         unreachable;
     };
     if (!tokens[3].is(")") and !tokens[3].is("void")) {
-        try parseArgs(allocator, tokens[3..endArgs], &children);
+        const args = try parseArgs(allocator, tokens[3..endArgs]);
+        defer allocator.free(args);
+        try children.appendSlice(allocator, args);
     }
-    if (!tokens[endArgs + 1].is("{")) return error.ExpectedOpenParam;
+    if (tokens[endArgs + 1].is(";"))
+        return .{
+            .tokens = tokens,
+            .nodeType = .function_prototype,
+            .children = try children.toOwnedSlice(allocator),
+        };
+    if (!tokens[endArgs + 1].is("{")) return error.ExpectedOpenBracket;
     try children.append(allocator, try parseScope(allocator, tokens[endArgs + 1 ..]));
     return .{
         .tokens = tokens,
@@ -97,11 +108,21 @@ fn parseFunction(allocator: std.mem.Allocator, tokens: []Token) !ASTNode {
         .children = try children.toOwnedSlice(allocator),
     };
 }
-fn parseArgs(allocator: std.mem.Allocator, tokens: []Token, fill: *std.ArrayList(ASTNode)) !void {
-    _ = allocator;
-    _ = tokens;
-    _ = fill;
-    unreachable;
+fn parseArgs(allocator: std.mem.Allocator, tokens: []Token) ![]ASTNode {
+    const args = try allocator.alloc(ASTNode, countParameters(tokens));
+    var start: usize = 2;
+    for (args) |*arg| {
+        var end = start;
+        while (end < tokens.len) : (end += 1) {
+            if (tokens[end].is("(")) {
+                end = findClosingParen(tokens, end);
+            }
+            if (tokens[end].is(",")) break;
+        }
+        arg.* = ASTNode{ .tokens = tokens[end - 1 .. end], .nodeType = .arg };
+        start = end + 1;
+    }
+    return args;
 }
 fn parseScope(allocator: std.mem.Allocator, tokens: []Token) !ASTNode {
     var node: ASTNode = .{ .nodeType = .scope, .tokens = tokens };
@@ -275,19 +296,22 @@ fn parseScope(allocator: std.mem.Allocator, tokens: []Token) !ASTNode {
                 continue;
             }
             const semicolon = findSemicolon(tokens, i);
-            if (tokens[i + 1].info != .operator) unreachable;
-            if (tokens[i + 1].is("=") or
-                tokens[i + 1].is("+=") or
-                tokens[i + 1].is("-=") or
-                tokens[i + 1].is("*=") or
-                tokens[i + 1].is("/="))
-            {
-                var a: ASTNode = .{ .tokens = tokens[i .. semicolon + 1], .nodeType = .binary_expression };
-                a.children = try allocator.alloc(ASTNode, 3);
-                a.children[0] = .{ .tokens = tokens[i .. i + 1], .nodeType = .variable };
-                a.children[1] = .{ .tokens = tokens[i + 1 .. i + 2], .nodeType = .operator };
-                a.children[2] = try parseExpression(allocator, tokens[i + 2 .. semicolon]);
-                try children.append(allocator, a);
+            if (tokens[i + 1].info == .operator) {
+                if (tokens[i + 1].is("=") or
+                    tokens[i + 1].is("+=") or
+                    tokens[i + 1].is("-=") or
+                    tokens[i + 1].is("*=") or
+                    tokens[i + 1].is("/="))
+                {
+                    var a: ASTNode = .{ .tokens = tokens[i .. semicolon + 1], .nodeType = .binary_expression };
+                    a.children = try allocator.alloc(ASTNode, 3);
+                    a.children[0] = .{ .tokens = tokens[i .. i + 1], .nodeType = .variable };
+                    a.children[1] = .{ .tokens = tokens[i + 1 .. i + 2], .nodeType = .operator };
+                    a.children[2] = try parseExpression(allocator, tokens[i + 2 .. semicolon]);
+                    try children.append(allocator, a);
+                } else {
+                    try children.append(allocator, try parseExpression(allocator, tokens[i..semicolon]));
+                }
             } else {
                 try children.append(allocator, try parseExpression(allocator, tokens[i..semicolon]));
             }
@@ -314,31 +338,36 @@ fn parseExpression(allocator: std.mem.Allocator, tokens: []Token) !ASTNode {
     if (tokens[0].is("(")) {
         if (findClosingParen(tokens, 0) == tokens.len - 1) return parseExpression(allocator, tokens[1 .. tokens.len - 1]);
     }
-    if (tokens.len == 3) {
-        assert(tokens[0].info != .operator);
-        assert(tokens[1].info == .operator);
-        assert(tokens[2].info != .operator);
-        return binExpr(allocator, tokens[0..1], tokens[1], tokens[2..3]);
-    } else {
-        var min: usize = std.math.maxInt(usize);
-        var minIndex: usize = std.math.maxInt(usize);
-        var i: usize = 0;
-        while (i < tokens.len) : (i += 1) {
-            if (tokens[i].is("(")) i = findClosingParen(tokens, i);
-            if (tokens[i].info == .operator and min >= bindingPower(tokens, i).toValue()) {
-                min = bindingPower(tokens, i).toValue();
-                minIndex = i;
+    var min: usize = std.math.maxInt(usize);
+    var minIndex: usize = std.math.maxInt(usize);
+    var i: usize = 0;
+    while (i < tokens.len) : (i += 1) {
+        if (tokens[i].is("(")) {
+            if (i != 0 and tokens[i - 1].info == .identifier) {
+                if (i == 1) {
+                    const close = findClosingParen(tokens, i);
+                    if (close == tokens.len - 1) {
+                        return functionCall(allocator, tokens);
+                    } else {
+                        return binExpr(allocator, tokens[0 .. close + 1], tokens[close + 2], tokens[close + 3 ..]);
+                    }
+                }
             }
+            i = findClosingParen(tokens, i);
         }
-        i = minIndex;
-        if (i == 0) {
-            return unExprPre(allocator, tokens[0], tokens[1..]);
+        if (tokens[i].info == .operator and min >= bindingPower(tokens, i).toValue()) {
+            min = bindingPower(tokens, i).toValue();
+            minIndex = i;
         }
-        if (i == tokens.len - 1) {
-            return unExprPost(allocator, tokens[0 .. tokens.len - 1], tokens[tokens.len - 1]);
-        }
-        return binExpr(allocator, tokens[0..i], tokens[i], tokens[i + 1 ..]);
     }
+    i = minIndex;
+    if (i == 0) {
+        return unExprPre(allocator, tokens[0], tokens[1..]);
+    }
+    if (i == tokens.len - 1) {
+        return unExprPost(allocator, tokens[0 .. tokens.len - 1], tokens[tokens.len - 1]);
+    }
+    return binExpr(allocator, tokens[0..i], tokens[i], tokens[i + 1 ..]);
 }
 fn findClosingParen(tokens: []Token, i: usize) usize {
     assert(tokens[i].is("("));
@@ -383,7 +412,39 @@ fn findSemicolon(tokens: []Token, i: usize) usize {
         }
     }
     return tokens.len - 1;
-    // unreachable;
+}
+fn functionCall(allocator: std.mem.Allocator, tokens: []Token) error{OutOfMemory}!ASTNode {
+    var child = try allocator.alloc(ASTNode, 1);
+    child[0].children = try allocator.alloc(ASTNode, 1 + countParameters(tokens[2 .. tokens.len - 1]));
+    child[0].children[0] = ASTNode{ .tokens = tokens[0..1], .nodeType = .variable };
+    var start: usize = 2;
+    for (1..child[0].children.len) |i| {
+        var end = start;
+        while (end < tokens.len - 1) : (end += 1) {
+            if (tokens[end].is("(")) {
+                end = findClosingParen(tokens, end);
+            }
+            if (tokens[end].is(",")) break;
+        }
+        child[0].children[i] = try parseExpression(allocator, tokens[start..end]);
+        start = end + 1;
+    }
+    child[0].nodeType = .function_call;
+    child[0].tokens = tokens;
+    return .{ .children = child, .nodeType = .expression, .tokens = tokens };
+}
+fn countParameters(tokens: []Token) usize {
+    if (tokens.len == 1 and tokens[0].is("void")) return 0;
+    if (tokens.len == 0) return 0;
+    var count: usize = 1;
+    var i: usize = 0;
+    while (i < tokens.len) : (i += 1) {
+        if (tokens[i].is("(")) {
+            i = findClosingParen(tokens, i);
+        }
+        if (tokens[i].is(",")) count += 1;
+    }
+    return count;
 }
 /// returns an expression node
 fn binExpr(

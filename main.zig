@@ -509,3 +509,51 @@ test "nested if else chains" {
 test "for without braces" {
     try std.testing.expectEqual(42, try compileAndRun("int main(){int s = 0; for(int i = 0; i < 7; i++) s += 6; return s;}"));
 }
+
+test "function call no args" {
+    try std.testing.expectEqual(42, try compileAndRun("int foo(){return 42;} int main(){return foo();}"));
+}
+
+test "function call with one arg" {
+    try std.testing.expectEqual(42, try compileAndRun("int foo(int x){return x;} int main(){return foo(42);}"));
+}
+
+test "function call with multiple args" {
+    try std.testing.expectEqual(42, try compileAndRun("int add(int a, int b){return a + b;} int main(){return add(40, 2);}"));
+}
+
+test "function call with expression arg" {
+    try std.testing.expectEqual(42, try compileAndRun("int foo(int x){return x;} int main(){return foo(40 + 2);}"));
+}
+
+test "function call return value in expression" {
+    try std.testing.expectEqual(42, try compileAndRun("int foo(){return 21;} int main(){return foo() + foo();}"));
+}
+
+test "function call as argument" {
+    try std.testing.expectEqual(42, try compileAndRun("int foo(int x){return x;} int main(){return foo(foo(42));}"));
+}
+
+test "recursive function" {
+    try std.testing.expectEqual(42, try compileAndRun("int countdown(int x){if(x == 0) return 0; return countdown(x - 1) + 1;} int main(){return countdown(42);}"));
+}
+
+test "fibonacci" {
+    try std.testing.expectEqual(55, try compileAndRun("int fib(int n){if(n <= 1) return n; return fib(n - 1) + fib(n - 2);} int main(){return fib(10);}"));
+}
+
+test "mutual recursion" {
+    try std.testing.expectEqual(1, try compileAndRun("int is_odd(int n); int is_even(int n){if(n == 0) return 1; return is_odd(n - 1);} int is_odd(int n){if(n == 0) return 0; return is_even(n - 1);} int main(){return is_even(42);}"));
+}
+
+test "six args uses all registers" {
+    try std.testing.expectEqual(42, try compileAndRun("int foo(int a, int b, int c, int d, int e, int f){return a + b + c + d + e + f;} int main(){return foo(2, 4, 6, 8, 10, 12);}"));
+}
+
+test "seven args spills to stack" {
+    try std.testing.expectEqual(42, try compileAndRun("int foo(int a, int b, int c, int d, int e, int f, int g){return a + b + c + d + e + f + g;} int main(){return foo(1, 2, 3, 4, 5, 6, 21);}"));
+}
+
+test "callee saved registers preserved" {
+    try std.testing.expectEqual(42, try compileAndRun("int bar(){return 1;} int main(){int x = 42; bar(); return x;}"));
+}

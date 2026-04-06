@@ -1,2 +1,2 @@
-int fn() {return 42;}
-int main() {return 0;}
+int add(int a, int b) { return a + b; }
+int main() { return add(42, -42); }
