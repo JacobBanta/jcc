@@ -293,7 +293,10 @@ pub fn genCode(allocator: std.mem.Allocator, ast: []const ASTNode, ctx: ?*Contex
                     node.children[1].tokens[0].is("-=") or
                     node.children[1].tokens[0].is("*=") or
                     node.children[1].tokens[0].is("/=") or
-                    node.children[1].tokens[0].is("%="))
+                    node.children[1].tokens[0].is("%=") or
+                    node.children[1].tokens[0].is("|=") or
+                    node.children[1].tokens[0].is("^=") or
+                    node.children[1].tokens[0].is("&="))
                 {
                     try append(allocator, &code, try genExpression(
                         allocator,
@@ -317,6 +320,12 @@ pub fn genCode(allocator: std.mem.Allocator, ast: []const ASTNode, ctx: ?*Contex
                         try code.appendSlice(allocator, "mov rcx, rdx\ncqo\nidiv rcx\n");
                     } else if (node.children[1].tokens[0].is("%=")) {
                         try code.appendSlice(allocator, "mov rcx, rdx\ncqo\nidiv rcx\nmov rax, rdx\n");
+                    } else if (node.children[1].tokens[0].is("|=")) {
+                        try code.appendSlice(allocator, "or rax, rdx\n");
+                    } else if (node.children[1].tokens[0].is("^=")) {
+                        try code.appendSlice(allocator, "xor rax, rdx\n");
+                    } else if (node.children[1].tokens[0].is("&=")) {
+                        try code.appendSlice(allocator, "and rax, rdx\n");
                     } else unreachable;
                     try append(allocator, &code, try move(
                         allocator,
@@ -517,6 +526,12 @@ fn genExpression(allocator: std.mem.Allocator, exp: ASTNode, to: Location, ctx: 
                 "cmp rax, rdx\nsetg al\nmovzx rax, al\n"
             else if (op.tokens[0].is("<"))
                 "cmp rax, rdx\nsetl al\nmovzx rax, al\n"
+            else if (op.tokens[0].is("^"))
+                "xor rax, rdx\n"
+            else if (op.tokens[0].is("|"))
+                "or rax, rdx\n"
+            else if (op.tokens[0].is("&"))
+                "and rax, rdx\n"
             else
                 unreachable;
             try code.appendSlice(allocator, inst);

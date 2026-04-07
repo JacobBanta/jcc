@@ -516,6 +516,9 @@ const BindingPower = enum {
     logand,
     logor,
     cmp,
+    bitor,
+    bitand,
+    bitxor,
     fn toValue(self: BindingPower) usize {
         return switch (self) {
             .paren => 16,
@@ -525,6 +528,9 @@ const BindingPower = enum {
             .add, .sub => 12,
             .cmp => 10,
             .eq => 9,
+            .bitand => 8,
+            .bitxor => 7,
+            .bitor => 6,
             .logand => 5,
             .logor => 4,
             .none => 0,
@@ -573,6 +579,12 @@ fn bindingPower(tokens: []Token, i: usize) BindingPower {
             .cmp
         else if (tokens[i].is("<="))
             .cmp
+        else if (tokens[i].is("&"))
+            .bitand
+        else if (tokens[i].is("|"))
+            .bitor
+        else if (tokens[i].is("^"))
+            .bitxor
         else
             unreachable;
     }
