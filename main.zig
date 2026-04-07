@@ -557,3 +557,35 @@ test "seven args spills to stack" {
 test "callee saved registers preserved" {
     try std.testing.expectEqual(42, try compileAndRun("int bar(){return 1;} int main(){int x = 42; bar(); return x;}"));
 }
+
+test "function call in multiplication" {
+    try std.testing.expectEqual(42, try compileAndRun("int foo(){return 7;} int main(){return foo() * 6;}"));
+}
+
+test "nested function calls" {
+    try std.testing.expectEqual(42, try compileAndRun("int bar(){return 40;} int foo(){return bar() + 2;} int main(){return foo();}"));
+}
+
+test "function call as argument to another function" {
+    try std.testing.expectEqual(42, try compileAndRun("int add(int a, int b){return a + b;} int get_val(){return 21;} int main(){return add(get_val(), get_val());}"));
+}
+
+test "function call with arithmetic expression argument" {
+    try std.testing.expectEqual(42, try compileAndRun("int foo(int x){return x;} int main(){return foo(20 + 22);}"));
+}
+
+test "multiple function calls in complex expression" {
+    try std.testing.expectEqual(42, try compileAndRun("int double_it(int x){return x * 2;} int add_five(int x){return x + 5;} int main(){return double_it(add_five(16));}"));
+}
+
+test "function call in assignment expression" {
+    try std.testing.expectEqual(42, try compileAndRun("int foo(){return 42;} int main(){int x = foo(); return x;}"));
+}
+
+test "function call with function call as parameter" {
+    try std.testing.expectEqual(30, try compileAndRun("int triple(int x){return x * 3;} int square(int x){return x * x;} int main(){return triple(square(3)) + triple(square(1));}"));
+}
+
+test "function call in bitwise expression" {
+    try std.testing.expectEqual(42, try compileAndRun("int get_bits(){return 0b101010;} int main(){return get_bits() | 0b001010;}"));
+}
