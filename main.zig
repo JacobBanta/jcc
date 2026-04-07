@@ -589,3 +589,39 @@ test "function call with function call as parameter" {
 test "function call in bitwise expression" {
     try std.testing.expectEqual(42, try compileAndRun("int get_bits(){return 0b101010;} int main(){return get_bits() | 0b001010;}"));
 }
+
+test "bitwise OR with function calls" {
+    try std.testing.expectEqual(0b1101, try compileAndRun("int get_a(){return 0b1001;} int get_b(){return 0b0101;} int main(){return get_a() | get_b();}"));
+}
+
+test "bitwise AND with function calls" {
+    try std.testing.expectEqual(0b0001, try compileAndRun("int get_a(){return 0b1001;} int get_b(){return 0b0101;} int main(){return get_a() & get_b();}"));
+}
+
+test "bitwise XOR with function calls" {
+    try std.testing.expectEqual(0b1100, try compileAndRun("int get_a(){return 0b1001;} int get_b(){return 0b0101;} int main(){return get_a() ^ get_b();}"));
+}
+
+test "left shift with function call" {
+    try std.testing.expectEqual(32, try compileAndRun("int get_value(){return 8;} int main(){return get_value() << 2;}"));
+}
+
+test "right shift with function call" {
+    try std.testing.expectEqual(2, try compileAndRun("int get_value(){return 8;} int main(){return get_value() >> 2;}"));
+}
+
+test "complex bitwise expression with multiple function calls" {
+    try std.testing.expectEqual(0b1110, try compileAndRun("int get_a(){return 0b1010;} int get_b(){return 0b1100;} int get_mask(){return 0b0110;} int main(){return (get_a() & get_mask()) | get_b();}"));
+}
+
+test "bitwise operations with function call arguments" {
+    try std.testing.expectEqual(14, try compileAndRun("int combine(int x, int y){return (x | y) & 0b1111;} int main(){return combine(0b1010, 0b0110);}"));
+}
+
+test "multiple shifts with function calls" {
+    try std.testing.expectEqual(54, try compileAndRun("int get_val(){return 12;} int main(){return (get_val() << 2) | (get_val() >> 1);}"));
+}
+
+test "bitwise operations in assignment with function call" {
+    try std.testing.expectEqual(10, try compileAndRun("int get_mask(){return 0b1110;} int main(){int flags = 0b1010; flags &= get_mask(); return flags;}"));
+}

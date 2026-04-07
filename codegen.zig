@@ -294,6 +294,8 @@ pub fn genCode(allocator: std.mem.Allocator, ast: []const ASTNode, ctx: ?*Contex
                     node.children[1].tokens[0].is("*=") or
                     node.children[1].tokens[0].is("/=") or
                     node.children[1].tokens[0].is("%=") or
+                    node.children[1].tokens[0].is(">>=") or
+                    node.children[1].tokens[0].is("<<=") or
                     node.children[1].tokens[0].is("|=") or
                     node.children[1].tokens[0].is("^=") or
                     node.children[1].tokens[0].is("&="))
@@ -320,6 +322,10 @@ pub fn genCode(allocator: std.mem.Allocator, ast: []const ASTNode, ctx: ?*Contex
                         try code.appendSlice(allocator, "mov rcx, rdx\ncqo\nidiv rcx\n");
                     } else if (node.children[1].tokens[0].is("%=")) {
                         try code.appendSlice(allocator, "mov rcx, rdx\ncqo\nidiv rcx\nmov rax, rdx\n");
+                    } else if (node.children[1].tokens[0].is("<<=")) {
+                        try code.appendSlice(allocator, "mov cl, dl\nsal rax, cl\n");
+                    } else if (node.children[1].tokens[0].is(">>=")) {
+                        try code.appendSlice(allocator, "mov cl, dl\nsar rax, cl\n");
                     } else if (node.children[1].tokens[0].is("|=")) {
                         try code.appendSlice(allocator, "or rax, rdx\n");
                     } else if (node.children[1].tokens[0].is("^=")) {
@@ -532,6 +538,10 @@ fn genExpression(allocator: std.mem.Allocator, exp: ASTNode, to: Location, ctx: 
                 "or rax, rdx\n"
             else if (op.tokens[0].is("&"))
                 "and rax, rdx\n"
+            else if (op.tokens[0].is(">>"))
+                "mov cl, dl\nsar rax, cl\n"
+            else if (op.tokens[0].is("<<"))
+                "mov cl, dl\nsal rax, cl\n"
             else
                 unreachable;
             try code.appendSlice(allocator, inst);

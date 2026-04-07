@@ -301,7 +301,13 @@ fn parseScope(allocator: std.mem.Allocator, tokens: []Token) !ASTNode {
                     tokens[i + 1].is("+=") or
                     tokens[i + 1].is("-=") or
                     tokens[i + 1].is("*=") or
-                    tokens[i + 1].is("/="))
+                    tokens[i + 1].is("/=") or
+                    tokens[i + 1].is("%=") or
+                    tokens[i + 1].is("<<=") or
+                    tokens[i + 1].is(">>=") or
+                    tokens[i + 1].is("&=") or
+                    tokens[i + 1].is("|=") or
+                    tokens[i + 1].is("^="))
                 {
                     var a: ASTNode = .{ .tokens = tokens[i .. semicolon + 1], .nodeType = .binary_expression };
                     a.children = try allocator.alloc(ASTNode, 3);
@@ -519,6 +525,7 @@ const BindingPower = enum {
     bitor,
     bitand,
     bitxor,
+    shift,
     fn toValue(self: BindingPower) usize {
         return switch (self) {
             .paren => 16,
@@ -526,6 +533,7 @@ const BindingPower = enum {
             .unary => 15,
             .mul, .div => 13,
             .add, .sub => 12,
+            .shift => 11,
             .cmp => 10,
             .eq => 9,
             .bitand => 8,
@@ -585,6 +593,10 @@ fn bindingPower(tokens: []Token, i: usize) BindingPower {
             .bitor
         else if (tokens[i].is("^"))
             .bitxor
+        else if (tokens[i].is("<<"))
+            .shift
+        else if (tokens[i].is(">>"))
+            .shift
         else
             unreachable;
     }
