@@ -349,7 +349,7 @@ fn parseExpression(allocator: std.mem.Allocator, tokens: []Token) !ASTNode {
                     if (close == tokens.len - 1) {
                         return functionCall(allocator, tokens);
                     } else {
-                        return binExpr(allocator, tokens[0 .. close + 1], tokens[close + 2], tokens[close + 3 ..]);
+                        return binExpr(allocator, tokens[0 .. close + 1], tokens[close + 1], tokens[close + 2 ..]);
                     }
                 }
             }
