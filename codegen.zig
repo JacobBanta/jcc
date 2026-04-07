@@ -64,14 +64,43 @@ pub fn genCode(allocator: std.mem.Allocator, ast: []const ASTNode, ctx: ?*Contex
                 try code.appendSlice(allocator, "\n");
                 try code.appendSlice(allocator, node.tokens[1].lexeme.value);
                 try code.appendSlice(allocator, ":\n" ++ prologue);
-                for (node.children[0 .. node.children.len - 1], ([_]Register{ .rdi, .rsi, .rdx, .rcx, .r8, .r9 })[0 .. node.children.len - 1]) |arg, reg| {
-                    try ctx.?.declarations.append(allocator, .{ .nodeType = .variable, .tokens = arg.tokens });
-                    try append(allocator, &code, try move(
-                        allocator,
-                        .{ .register = reg },
-                        .{ .variable = arg.tokens[0].lexeme.value },
-                        ctx.?,
-                    ));
+                if (node.children.len <= 7) {
+                    for (node.children[0 .. node.children.len - 1], ([_]Register{ .rdi, .rsi, .rdx, .rcx, .r8, .r9 })[0 .. node.children.len - 1]) |arg, reg| {
+                        try ctx.?.declarations.append(allocator, .{ .nodeType = .variable, .tokens = arg.tokens });
+                        try append(allocator, &code, try move(
+                            allocator,
+                            .{ .register = reg },
+                            .{ .variable = arg.tokens[0].lexeme.value },
+                            ctx.?,
+                        ));
+                    }
+                } else {
+                    for (node.children[0..6], [_]Register{ .rdi, .rsi, .rdx, .rcx, .r8, .r9 }) |arg, reg| {
+                        try ctx.?.declarations.append(allocator, .{ .nodeType = .variable, .tokens = arg.tokens });
+                        try append(allocator, &code, try move(
+                            allocator,
+                            .{ .register = reg },
+                            .{ .variable = arg.tokens[0].lexeme.value },
+                            ctx.?,
+                        ));
+                    }
+                    for (node.children[6 .. node.children.len - 1], 2..) |arg, offset| {
+                        try ctx.?.declarations.append(allocator, .{ .nodeType = .variable, .tokens = arg.tokens });
+                        const loc = try std.fmt.allocPrint(allocator, "[rsp + {d}]", .{offset * 8});
+                        defer allocator.free(loc);
+                        try append(allocator, &code, try move(
+                            allocator,
+                            .{ .literal = loc },
+                            .{ .register = .rax },
+                            ctx.?,
+                        ));
+                        try append(allocator, &code, try move(
+                            allocator,
+                            .{ .register = .rax },
+                            .{ .variable = arg.tokens[0].lexeme.value },
+                            ctx.?,
+                        ));
+                    }
                 }
                 try append(
                     allocator,
@@ -615,11 +644,23 @@ fn genExpression(allocator: std.mem.Allocator, exp: ASTNode, to: Location, ctx: 
                     ctx,
                 ));
             }
-            assert(params.len <= 6);
-            for (params, ([_]Register{ .rdi, .rsi, .rdx, .rcx, .r8, .r9 })[0..params.len]) |from, reg| {
-                try append(allocator, &code, try move(allocator, .{ .variable = from }, .{ .register = reg }, ctx));
+            // subtraction must happen before the pushes
+            try code.print(allocator, "sub rsp, {d}\n", .{ctx.declarations.items.len * 8});
+            if (params.len <= 6) {
+                for (params, ([_]Register{ .rdi, .rsi, .rdx, .rcx, .r8, .r9 })[0..params.len]) |from, reg| {
+                    try append(allocator, &code, try move(allocator, .{ .variable = from }, .{ .register = reg }, ctx));
+                }
+            } else {
+                for (params[0..6], [_]Register{ .rdi, .rsi, .rdx, .rcx, .r8, .r9 }) |from, reg| {
+                    try append(allocator, &code, try move(allocator, .{ .variable = from }, .{ .register = reg }, ctx));
+                }
+                for (params[6..]) |from| {
+                    try append(allocator, &code, try move(allocator, .{ .variable = from }, .{ .register = .rax }, ctx));
+                    try code.appendSlice(allocator, "push rax\n");
+                }
             }
-            try code.print(allocator, "sub rsp, {1d}\ncall {0s}\nadd rsp, {1d}\n", .{ exp.children[0].tokens[0].lexeme.value, ctx.declarations.items.len * 8 });
+            // addition counteracts the effects of push
+            try code.print(allocator, "call {s}\nadd rsp, {d}\n", .{ exp.children[0].tokens[0].lexeme.value, (ctx.declarations.items.len + @max(6, params.len) - 6) * 8 });
         },
         else => unreachable,
     }
