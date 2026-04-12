@@ -580,6 +580,12 @@ fn genExpression(allocator: std.mem.Allocator, exp: ASTNode, to: Location, ctx: 
             if (is_prefix) {
                 const op = exp.children[0];
                 const operand = exp.children[1];
+                if (op.tokens[0].is("&")) {
+                    if (operand.tokens[0].info == .identifier) {
+                        try code.print(allocator, "lea rax, [rbp-{d}]\n", .{try getOffset(ctx, operand.tokens[0].lexeme.value)});
+                    } else unreachable;
+                    break :sw;
+                }
                 try append(allocator, &code, try genExpression(allocator, operand, .{ .register = .rax }, ctx));
                 if (op.tokens[0].is("-")) {
                     try code.appendSlice(allocator, "neg rax\n");
@@ -601,6 +607,8 @@ fn genExpression(allocator: std.mem.Allocator, exp: ASTNode, to: Location, ctx: 
                     ));
                 } else if (op.tokens[0].is("!")) {
                     try code.appendSlice(allocator, "cmp rax, 0\nsete al\nmovzx rax, al\n");
+                } else if (op.tokens[0].is("*")) {
+                    try code.appendSlice(allocator, "mov rax, [rax]\n");
                 } else unreachable;
             } else if (!is_prefix) {
                 const operand = exp.children[0];
@@ -618,6 +626,8 @@ fn genExpression(allocator: std.mem.Allocator, exp: ASTNode, to: Location, ctx: 
                         "dec qword [rbp - {d}]\n",
                         .{try getOffset(ctx, operand.tokens[0].lexeme.value)},
                     );
+                } else if (op.tokens[0].is("*")) {
+                    try code.appendSlice(allocator, "mov rax, [rax]\n");
                 } else unreachable;
             } else unreachable;
         },

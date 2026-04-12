@@ -170,17 +170,54 @@ fn lexemize(allocator: std.mem.Allocator, source: []const u8) ![]Lexeme {
     return lexemes.toOwnedSlice(allocator);
 }
 
+pub var types: [][]const u8 = undefined;
+
 pub const Keyword = enum {
-    int,
-    @"return",
-    @"if",
-    @"else",
-    @"for",
-    @"while",
-    do,
-    goto,
+    alignas,
+    alignof,
+    auto,
+    bool,
     @"break",
+    case,
+    char,
+    @"const",
+    constexpr,
     @"continue",
+    default,
+    do,
+    double,
+    @"else",
+    @"enum",
+    @"extern",
+    float,
+    @"for",
+    goto,
+    @"if",
+    @"inline",
+    int,
+    long,
+    register,
+    restrict,
+    @"return",
+    short,
+    signed,
+    sizeof,
+    static,
+    static_assert,
+    @"struct",
+    @"switch",
+    thread_local,
+    typedef,
+    typeof,
+    typeof_unqual,
+    @"union",
+    unsigned,
+    void,
+    @"volatile",
+    @"while",
+    nullptr,
+    true,
+    false,
 };
 pub const Punctuation = enum {
     @"(",
@@ -220,6 +257,7 @@ pub const Token = struct {
         punctuation: Punctuation,
         identifier: void,
         operator: void,
+        type: void,
     },
     lexeme: Lexeme,
     pub fn is(self: Token, token: []const u8) bool {
@@ -299,5 +337,3 @@ fn validateNumber(number: []const u8) !void {
         }
     }
 }
-
-// TODO: add tests

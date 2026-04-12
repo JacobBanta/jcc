@@ -18,7 +18,6 @@ pub const ASTNode = struct {
         goto,
         statement,
         literal,
-        type,
         variable,
         scope,
         // same as scope, but it does not reset declarations
@@ -26,7 +25,11 @@ pub const ASTNode = struct {
         operator,
     },
     children: []ASTNode = &.{},
+    type: ?*Type = null,
     pub fn deinit(self: *ASTNode, allocator: std.mem.Allocator) void {
+        if (self.type) |t| {
+            t.deinit(allocator);
+        }
         if (self.children.len > 0) {
             for (self.children) |*child| {
                 child.deinit(allocator);
@@ -47,9 +50,55 @@ pub const ASTNode = struct {
         }
     }
 };
+pub const Type = struct {
+    name: []const u8 = "",
+    info: union(enum) {
+        integer: struct { size: usize, signed: bool = true },
+        float: enum { f32, f64, f80, d32, d64, d128 },
+        @"struct": []Type,
+        @"union": []Type,
+        function: struct { ret: *Type, args: []Type },
+        pointer: *Type,
+        @"enum": struct { []struct { name: []const u8, value: isize } },
+        nullptr: void,
+        atomic: *Type,
+        complex: *Type,
+        void: void,
+    } = .void,
+    pub fn deinit(self: *Type, allocator: std.mem.Allocator) void {
+        defer allocator.destroy(self);
+        switch (self.info) {
+            .@"struct", .@"union" => |i| {
+                for (i) |*f| {
+                    f.deinit(allocator);
+                }
+                allocator.free(i);
+            },
+            .function => |f| {
+                f.ret.deinit(allocator);
+                allocator.destroy(f.ret);
+                for (f.args) |*a| {
+                    a.deinit(allocator);
+                }
+                allocator.free(f.args);
+            },
+            .pointer, .atomic, .complex => |p| {
+                p.deinit(allocator);
+            },
+            .integer, .float, .nullptr, .void => {},
+            else => unreachable,
+        }
+    }
+};
 
 pub fn parse(allocator: std.mem.Allocator, tokens: []Token) ![]ASTNode {
     var nodes = std.ArrayList(ASTNode).empty;
+    errdefer {
+        for (nodes.items) |*c| {
+            c.deinit(allocator);
+        }
+        nodes.deinit(allocator);
+    }
     var i: usize = 0;
     while (i < tokens.len) : (i += 1) {
         if (tokens[i].is("int") and tokens[i + 2].is("(")) {
@@ -76,6 +125,12 @@ pub fn parse(allocator: std.mem.Allocator, tokens: []Token) ![]ASTNode {
 
 fn parseFunction(allocator: std.mem.Allocator, tokens: []Token) !ASTNode {
     var children = std.ArrayList(ASTNode).empty;
+    errdefer {
+        for (children.items) |*c| {
+            c.deinit(allocator);
+        }
+        children.deinit(allocator);
+    }
     const endArgs = blk: {
         var depth: usize = 0;
         for (tokens, 0..) |t, i| {
@@ -151,16 +206,8 @@ fn parseScope(allocator: std.mem.Allocator, tokens: []Token) !ASTNode {
                     try children.append(allocator, a);
                     i = semicolon;
                 },
-                .int => {
-                    var a: ASTNode = .{ .tokens = tokens[i .. semicolon + 1], .nodeType = .declaration };
-                    if (tokens[i .. semicolon + 1].len == 3) {
-                        a.children = try allocator.alloc(ASTNode, 1);
-                        a.children[0] = .{ .tokens = tokens[i + 1 .. i + 2], .nodeType = .variable };
-                    } else {
-                        a.children = try allocator.alloc(ASTNode, 2);
-                        a.children[0] = .{ .tokens = tokens[i + 1 .. i + 2], .nodeType = .variable };
-                        a.children[1] = try parseExpression(allocator, tokens[i + 3 .. semicolon]);
-                    }
+                .int, .unsigned, .bool, .void, .float, .char, .double, .short => {
+                    const a = try parseDeclaration(allocator, tokens[i..semicolon]);
                     try children.append(allocator, a);
                     i = semicolon;
                 },
@@ -287,7 +334,10 @@ fn parseScope(allocator: std.mem.Allocator, tokens: []Token) !ASTNode {
                     try children.append(allocator, .{ .tokens = tokens[i .. i + 2], .nodeType = .statement });
                     i += 1;
                 },
-                else => unreachable,
+                else => |k| {
+                    std.log.err("unimplemented keyword: {s}", .{@tagName(k)});
+                    return error.UnimplementedKeyword;
+                },
             }
         } else if (tokens[i].info == .identifier) {
             if (tokens[i + 1].is(":")) {
@@ -375,6 +425,48 @@ fn parseExpression(allocator: std.mem.Allocator, tokens: []Token) !ASTNode {
     }
     return binExpr(allocator, tokens[0..i], tokens[i], tokens[i + 1 ..]);
 }
+fn parseDeclaration(allocator: std.mem.Allocator, tokens: []Token) !ASTNode {
+    var a: ASTNode = .{ .tokens = tokens, .nodeType = .declaration };
+    const identifier = blk: {
+        for (tokens, 0..) |t, i| {
+            if (t.info == .identifier) break :blk i;
+        }
+        unreachable;
+    };
+    if (contains(tokens, "=")) |index| {
+        a.children = try allocator.alloc(ASTNode, 2);
+        a.children[0] = .{ .tokens = tokens[identifier .. identifier + 1], .nodeType = .variable };
+        a.children[0].type = try parseType(allocator, tokens[0..index]);
+        a.children[1] = try parseExpression(allocator, tokens[index + 1 ..]);
+    } else {
+        a.children = try allocator.alloc(ASTNode, 1);
+        a.children[0] = .{ .tokens = tokens[identifier .. identifier + 1], .nodeType = .variable };
+        a.children[0].type = try parseType(allocator, tokens);
+    }
+    return a;
+}
+fn parseType(allocator: std.mem.Allocator, tokens: []Token) !*Type {
+    if (tokens[tokens.len - 1].info == .identifier) return parseType(allocator, tokens[0 .. tokens.len - 1]);
+    if (tokens.len == 1) {
+        if (tokens[0].is("int")) {
+            const t = try allocator.create(Type);
+            t.* = .{ .name = "int", .info = .{ .integer = .{ .size = 32 } } };
+            return t;
+        }
+    } else {
+        if (tokens[tokens.len - 1].is("*")) {
+            const t = try allocator.create(Type);
+            t.* = .{
+                .name = "*",
+                .info = .{
+                    .pointer = try parseType(allocator, tokens[0 .. tokens.len - 1]),
+                },
+            };
+            return t;
+        }
+    }
+    return error.TypeNotSupported;
+}
 fn findClosingParen(tokens: []Token, i: usize) usize {
     assert(tokens[i].is("("));
     var depth: usize = 0;
@@ -437,6 +529,7 @@ fn functionCall(allocator: std.mem.Allocator, tokens: []Token) error{OutOfMemory
     }
     child[0].nodeType = .function_call;
     child[0].tokens = tokens;
+    child[0].type = null;
     return .{ .children = child, .nodeType = .expression, .tokens = tokens };
 }
 fn countParameters(tokens: []Token) usize {
@@ -602,4 +695,10 @@ fn bindingPower(tokens: []Token, i: usize) BindingPower {
     }
     assert(tokens[i + 1].info != .operator);
     return bindingPower(tokens, i + 1);
+}
+fn contains(tokens: []Token, string: []const u8) ?usize {
+    for (tokens, 0..) |t, i| {
+        if (t.is(string)) return i;
+    }
+    return null;
 }
